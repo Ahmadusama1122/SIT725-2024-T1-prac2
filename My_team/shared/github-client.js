@@ -1,17 +1,26 @@
-const { Octokit } = require('@octokit/rest');
 const { GITHUB_TOKEN, GITHUB_OWNER } = require('./config');
 
 let octokit = null;
+let Octokit = null;
 
-function getOctokit() {
+async function loadOctokit() {
+  if (!Octokit) {
+    const mod = await import('@octokit/rest');
+    Octokit = mod.Octokit;
+  }
+  return Octokit;
+}
+
+async function getOctokit() {
   if (!octokit && GITHUB_TOKEN) {
-    octokit = new Octokit({ auth: GITHUB_TOKEN });
+    const OctokitClass = await loadOctokit();
+    octokit = new OctokitClass({ auth: GITHUB_TOKEN });
   }
   return octokit;
 }
 
 async function createIssue(repo, title, body, labels = []) {
-  const ok = getOctokit();
+  const ok = await getOctokit();
   if (!ok) {
     console.log(`[GitHub] (disabled) Would create issue: ${title}`);
     return null;
@@ -33,7 +42,7 @@ async function createIssue(repo, title, body, labels = []) {
 }
 
 async function getOpenIssues(repo, labels = []) {
-  const ok = getOctokit();
+  const ok = await getOctokit();
   if (!ok) return [];
 
   try {
@@ -60,7 +69,7 @@ async function getOpenIssues(repo, labels = []) {
 }
 
 async function commentOnIssue(repo, issueNumber, body) {
-  const ok = getOctokit();
+  const ok = await getOctokit();
   if (!ok) return;
 
   try {
@@ -76,7 +85,7 @@ async function commentOnIssue(repo, issueNumber, body) {
 }
 
 async function closeIssue(repo, issueNumber) {
-  const ok = getOctokit();
+  const ok = await getOctokit();
   if (!ok) return;
 
   try {
