@@ -46,6 +46,10 @@ const AGENT_REGISTRY = {
     keywords: ['report', 'analytics', 'kpi', 'metrics', 'dashboard', 'trend', 'data', 'performance'],
     description: 'KPI tracking, reports, dashboards, anomaly detection',
   },
+  'marketing-auditor': {
+    keywords: ['audit', 'website audit', 'marketing audit', 'score website', 'analyze website', 'site review', 'conversion audit', 'seo audit'],
+    description: 'Full marketing audits of websites: content, SEO, conversion, competitive analysis, and PDF reports',
+  },
 };
 
 // Agent chains — complex tasks that need multiple agents in sequence
@@ -55,6 +59,7 @@ const AGENT_CHAINS = {
   'lead-generation': ['sales-prospector', 'outreach-manager', 'data-analyst'],
   'new-feature': ['product-strategist', 'fullstack-developer', 'qa-engineer', 'content-creator'],
   'bug-fix': ['customer-support', 'qa-engineer', 'fullstack-developer', 'devops-engineer'],
+  'website-audit': ['marketing-auditor', 'seo-analyst', 'content-creator', 'data-analyst'],
 };
 
 const CHAIN_KEYWORDS = {
@@ -63,6 +68,7 @@ const CHAIN_KEYWORDS = {
   'lead-generation': ['find leads', 'generate leads', 'prospect and outreach', 'lead generation'],
   'new-feature': ['new feature', 'add feature', 'feature request'],
   'bug-fix': ['bug reported', 'customer bug', 'production issue'],
+  'website-audit': ['audit website', 'full audit', 'marketing audit', 'website review'],
 };
 
 function routeByKeywords(taskText) {
