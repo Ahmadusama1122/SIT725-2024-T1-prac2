@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const { PORT } = require('./shared/config');
 const { init: initOrchestrator, getHealthStatus } = require('./orchestrator');
 const { initDiscord, onCommand, notify } = require('./shared/discord-notifier');
@@ -6,6 +7,13 @@ const { getDb } = require('./shared/database');
 const { executeSingleAgent } = require('./orchestrator');
 
 const app = express();
+
+// Serve dashboard
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {

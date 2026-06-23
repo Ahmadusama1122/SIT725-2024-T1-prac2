@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Team AI — Command Center</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #1a1a2e;
+      --bg-card-hover: #22223a;
+      --border: #2a2a3e;
+      --text-primary: #e8e8f0;
+      --text-secondary: #8888a0;
+      --text-muted: #555570;
+      --accent-blue: #4f7cff;
+      --accent-purple: #8b5cf6;
+      --accent-green: #10b981;
+      --accent-orange: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-pink: #ec4899;
+      --accent-cyan: #06b6d4;
+      --glow-blue: rgba(79, 124, 255, 0.15);
+      --glow-green: rgba(16, 185, 129, 0.15);
+      --glow-purple: rgba(139, 92, 246, 0.15);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image:
+        linear-gradient(rgba(79, 124, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 124, 255, 0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      text-align: center;
+      padding: 40px 0 30px;
+      position: relative;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #4f7cff, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1px;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.green { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+    .status-dot.orange { background: var(--accent-orange); box-shadow: 0 0 8px var(--accent-orange); }
+    .status-dot.red { background: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* ─── Stats Row ─── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 30px 0;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .stat-card:hover {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 20px var(--glow-blue);
+      transform: translateY(-2px);
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+
+    /* ─── Section Headers ─── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 40px 0 20px;
+    }
+
+    .section-header h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .section-header .line {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--border), transparent);
+    }
+
+    /* ─── Org Chart ─── */
+    .org-chart {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 30px 0;
+    }
+
+    .org-level {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+
+    .org-connector {
+      width: 2px;
+      height: 20px;
+      background: linear-gradient(180deg, var(--accent-blue), var(--accent-purple));
+      opacity: 0.4;
+    }
+
+    .org-connector-h {
+      width: 80%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-blue) 20%, var(--accent-blue) 80%, transparent);
+      opacity: 0.3;
+    }
+
+    /* ─── Agent Cards ─── */
+    .agent-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      width: 220px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      cursor: default;
+    }
+
+    .agent-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      border-radius: 16px 16px 0 0;
+    }
+
+    .agent-card:hover {
+      transform: translateY(-4px);
+      border-color: transparent;
+    }
+
+    .agent-card.ceo { --card-color: var(--accent-blue); }
+    .agent-card.engineering { --card-color: var(--accent-green); }
+    .agent-card.marketing { --card-color: var(--accent-purple); }
+    .agent-card.sales { --card-color: var(--accent-orange); }
+    .agent-card.support { --card-color: var(--accent-pink); }
+    .agent-card.analytics { --card-color: var(--accent-cyan); }
+    .agent-card.product { --card-color: #f472b6; }
+
+    .agent-card::before { background: var(--card-color); }
+    .agent-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.3), 0 0 20px color-mix(in srgb, var(--card-color) 20%, transparent); }
+
+    .agent-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+      background: color-mix(in srgb, var(--card-color) 15%, transparent);
+    }
+
+    .agent-role {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--card-color);
+      font-weight: 600;
+    }
+
+    .agent-name {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 4px 0 8px;
+      color: var(--text-primary);
+    }
+
+    .agent-desc {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .agent-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem;
+    }
+
+    .agent-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    .agent-status-text { color: var(--accent-green); font-weight: 500; }
+    .agent-status.disabled .agent-status-dot { background: var(--accent-red); animation: none; }
+    .agent-status.disabled .agent-status-text { color: var(--accent-red); }
+
+    .agent-skills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 10px;
+    }
+
+    .skill-tag {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.05);
+      color: var(--text-muted);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* ─── Chain Visualization ─── */
+    .chains-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 16px;
+    }
+
+    .chain-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.3s;
+    }
+
+    .chain-card:hover {
+      border-color: var(--accent-purple);
+      box-shadow: 0 0 20px var(--glow-purple);
+    }
+
+    .chain-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chain-flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chain-step {
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--accent-purple);
+      white-space: nowrap;
+    }
+
+    .chain-arrow {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    /* ─── Activity Feed ─── */
+    .feed-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .feed-item {
+      display: flex;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: background 0.2s;
+    }
+
+    .feed-item:hover { background: var(--bg-card-hover); }
+
+    .feed-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    .feed-icon.task { background: rgba(79, 124, 255, 0.15); }
+    .feed-icon.complete { background: rgba(16, 185, 129, 0.15); }
+    .feed-icon.alert { background: rgba(239, 68, 68, 0.15); }
+    .feed-icon.scheduled { background: rgba(245, 158, 11, 0.15); }
+
+    .feed-content { flex: 1; }
+    .feed-title { font-size: 0.85rem; font-weight: 500; }
+    .feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ─── Schedule Timeline ─── */
+    .timeline {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 0;
+    }
+
+    .timeline-time {
+      padding: 16px 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+      text-align: right;
+      border-right: 2px solid var(--border);
+      position: relative;
+    }
+
+    .timeline-time::after {
+      content: '';
+      position: absolute;
+      right: -5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      box-shadow: 0 0 8px var(--accent-blue);
+    }
+
+    .timeline-content {
+      padding: 12px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .timeline-agent {
+      background: rgba(79, 124, 255, 0.1);
+      border: 1px solid rgba(79, 124, 255, 0.2);
+      border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 0.75rem;
+      color: var(--accent-blue);
+      font-weight: 500;
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      text-align: center;
+      padding: 40px 0 20px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 768px) {
+      .header h1 { font-size: 1.8rem; }
+      .agent-card { width: 100%; }
+      .chains-grid { grid-template-columns: 1fr; }
+      .timeline { grid-template-columns: 80px 1fr; }
+    }
+
+    /* ─── Animations ─── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-in {
+      animation: fadeInUp 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    .agent-card:nth-child(1) { animation-delay: 0.05s; }
+    .agent-card:nth-child(2) { animation-delay: 0.1s; }
+    .agent-card:nth-child(3) { animation-delay: 0.15s; }
+    .agent-card:nth-child(4) { animation-delay: 0.2s; }
+    .agent-card:nth-child(5) { animation-delay: 0.25s; }
+    .agent-card:nth-child(6) { animation-delay: 0.3s; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>My Team AI</h1>
+    <p>Autonomous AI Agent Command Center</p>
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-dot green" id="system-dot"></div>
+        <span id="system-status">System Online</span>
+      </div>
+      <div class="status-item">
+        <span id="uptime-display">Uptime: --</span>
+      </div>
+      <div class="status-item">
+        <span id="memory-display">Memory: --</span>
+      </div>
+      <div class="status-item">
+        <span id="last-update">Last refresh: --</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-number" id="stat-agents">12</div>
+      <div class="stat-label">Active Agents</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-total">0</div>
+      <div class="stat-label">Total Tasks</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-completed">0</div>
+      <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-pending">0</div>
+      <div class="stat-label">Pending</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-failed">0</div>
+      <div class="stat-label">Failed</div>
+    </div>
+  </div>
+
+  <!-- Org Chart -->
+  <div class="section-header">
+    <h2>🏢 Organization</h2>
+    <div class="line"></div>
+  </div>
+
+  <div class="org-chart">
+
+    <!-- CEO Level -->
+    <div class="org-level">
+      <div class="agent-card ceo animate-in">
+        <div class="agent-avatar">🎯</div>
+        <div class="agent-role">CEO / COO</div>
+        <div class="agent-name">Orchestrator</div>
+        <div class="agent-desc">Collects tasks, prioritizes, routes to agents, monitors health, self-heals</div>
+        <div class="agent-status" id="status-orchestrator">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Running</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="org-connector"></div>
+    <div class="org-connector-h"></div>
+
+    <!-- Department Heads -->
+    <div class="org-level">
+
+      <!-- CPO -->
+      <div class="agent-card product animate-in">
+        <div class="agent-avatar">💡</div>
+        <div class="agent-role">CPO</div>
+        <div class="agent-name">Product Strategist</div>
+        <div class="agent-desc">Market research, competitive analysis, PRDs, feature prioritization</div>
+        <div class="agent-skills">
+          <span class="skill-tag">market-research</span>
+          <span class="skill-tag">prd-writer</span>
+          <span class="skill-tag">feature-prioritizer</span>
+        </div>
+        <div class="agent-status" id="status-product-strategist">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <!-- CTO -->
+      <div class="agent-card engineering animate-in">
+        <div class="agent-avatar">⚡</div>
+        <div class="agent-role">CTO / Lead Dev</div>
+        <div class="agent-name">Full-Stack Developer</div>
+        <div class="agent-desc">APIs, frontends, databases, code reviews, production-ready code</div>
+        <div class="agent-skills">
+          <span class="skill-tag">api-builder</span>
+          <span class="skill-tag">frontend</span>
+          <span class="skill-tag">database</span>
+        </div>
+        <div class="agent-status" id="status-fullstack-developer">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <!-- CMO -->
+      <div class="agent-card marketing animate-in">
+        <div class="agent-avatar">📝</div>
+        <div class="agent-role">CMO / Head of Content</div>
+        <div class="agent-name">Content Creator</div>
+        <div class="agent-desc">Blog posts, landing pages, email sequences, lead magnets</div>
+        <div class="agent-skills">
+          <span class="skill-tag">blog-writer</span>
+          <span class="skill-tag">landing-page</span>
+          <span class="skill-tag">email</span>
+        </div>
+        <div class="agent-status" id="status-content-creator">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <!-- VP Sales -->
+      <div class="agent-card sales animate-in">
+        <div class="agent-avatar">🎯</div>
+        <div class="agent-role">VP Sales</div>
+        <div class="agent-name">Sales Prospector</div>
+        <div class="agent-desc">Apollo searches, lead scoring, ICP building, target list generation</div>
+        <div class="agent-skills">
+          <span class="skill-tag">apollo</span>
+          <span class="skill-tag">lead-scorer</span>
+          <span class="skill-tag">icp-builder</span>
+        </div>
+        <div class="agent-status" id="status-sales-prospector">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <!-- CFO / Analytics -->
+      <div class="agent-card analytics animate-in">
+        <div class="agent-avatar">📊</div>
+        <div class="agent-role">CFO / Head of Analytics</div>
+        <div class="agent-name">Data Analyst</div>
+        <div class="agent-desc">KPI tracking, daily/weekly reports, anomaly detection</div>
+        <div class="agent-skills">
+          <span class="skill-tag">kpi-tracker</span>
+          <span class="skill-tag">daily-report</span>
+          <span class="skill-tag">anomaly</span>
+        </div>
+        <div class="agent-status" id="status-data-analyst">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="org-connector"></div>
+    <div class="org-connector-h"></div>
+
+    <!-- Team Members -->
+    <div class="org-level">
+
+      <div class="agent-card engineering animate-in">
+        <div class="agent-avatar">🧪</div>
+        <div class="agent-role">QA Lead</div>
+        <div class="agent-name">QA Engineer</div>
+        <div class="agent-desc">Test writing, bug reports, deployment validation</div>
+        <div class="agent-skills">
+          <span class="skill-tag">test-writer</span>
+          <span class="skill-tag">bug-reporter</span>
+        </div>
+        <div class="agent-status" id="status-qa-engineer">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card engineering animate-in">
+        <div class="agent-avatar">🚀</div>
+        <div class="agent-role">Infrastructure</div>
+        <div class="agent-name">DevOps Engineer</div>
+        <div class="agent-desc">Docker, Railway, CI/CD, health monitoring</div>
+        <div class="agent-skills">
+          <span class="skill-tag">docker</span>
+          <span class="skill-tag">ci-cd</span>
+          <span class="skill-tag">monitoring</span>
+        </div>
+        <div class="agent-status" id="status-devops-engineer">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card marketing animate-in">
+        <div class="agent-avatar">📱</div>
+        <div class="agent-role">Social Media</div>
+        <div class="agent-name">Social Media Manager</div>
+        <div class="agent-desc">Platform posts, carousels, scheduling, engagement tracking</div>
+        <div class="agent-skills">
+          <span class="skill-tag">post-creator</span>
+          <span class="skill-tag">carousel</span>
+        </div>
+        <div class="agent-status" id="status-social-media-manager">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card marketing animate-in">
+        <div class="agent-avatar">🔍</div>
+        <div class="agent-role">SEO</div>
+        <div class="agent-name">SEO Analyst</div>
+        <div class="agent-desc">Keyword research, content strategy, on-page optimization, rank tracking</div>
+        <div class="agent-skills">
+          <span class="skill-tag">keywords</span>
+          <span class="skill-tag">on-page</span>
+          <span class="skill-tag">rank-tracker</span>
+        </div>
+        <div class="agent-status" id="status-seo-analyst">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card marketing animate-in">
+        <div class="agent-avatar">📋</div>
+        <div class="agent-role">Marketing Audit</div>
+        <div class="agent-name">Marketing Auditor</div>
+        <div class="agent-desc">Full website audits with scoring, findings, action plans, PDF reports</div>
+        <div class="agent-skills">
+          <span class="skill-tag">website-audit</span>
+          <span class="skill-tag">seo-audit</span>
+          <span class="skill-tag">report</span>
+        </div>
+        <div class="agent-status" id="status-marketing-auditor">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card sales animate-in">
+        <div class="agent-avatar">✉️</div>
+        <div class="agent-role">Outreach</div>
+        <div class="agent-name">Outreach Manager</div>
+        <div class="agent-desc">LinkedIn automation, cold emails, follow-up sequences, personalization</div>
+        <div class="agent-skills">
+          <span class="skill-tag">linkedin</span>
+          <span class="skill-tag">cold-email</span>
+          <span class="skill-tag">follow-up</span>
+        </div>
+        <div class="agent-status" id="status-outreach-manager">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+      <div class="agent-card support animate-in">
+        <div class="agent-avatar">💬</div>
+        <div class="agent-role">Support</div>
+        <div class="agent-name">Customer Support</div>
+        <div class="agent-desc">Ticket responses, FAQ maintenance, escalation handling</div>
+        <div class="agent-skills">
+          <span class="skill-tag">tickets</span>
+          <span class="skill-tag">faq</span>
+          <span class="skill-tag">escalation</span>
+        </div>
+        <div class="agent-status" id="status-customer-support">
+          <div class="agent-status-dot"></div>
+          <span class="agent-status-text">Idle</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Chains -->
+  <div class="section-header">
+    <h2>🔗 Agent Chains</h2>
+    <div class="line"></div>
+  </div>
+
+  <div class="chains-grid">
+    <div class="chain-card">
+      <div class="chain-title">🚀 Launch Project</div>
+      <div class="chain-flow">
+        <span class="chain-step">Product Strategist</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Full-Stack Dev</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">QA Engineer</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">DevOps</span>
+      </div>
+    </div>
+    <div class="chain-card">
+      <div class="chain-title">📢 Marketing Campaign</div>
+      <div class="chain-flow">
+        <span class="chain-step">SEO Analyst</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Content Creator</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Social Media</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Data Analyst</span>
+      </div>
+    </div>
+    <div class="chain-card">
+      <div class="chain-title">🎯 Lead Generation</div>
+      <div class="chain-flow">
+        <span class="chain-step">Sales Prospector</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Outreach Manager</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Data Analyst</span>
+      </div>
+    </div>
+    <div class="chain-card">
+      <div class="chain-title">⭐ New Feature</div>
+      <div class="chain-flow">
+        <span class="chain-step">Product Strategist</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Full-Stack Dev</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">QA Engineer</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Content Creator</span>
+      </div>
+    </div>
+    <div class="chain-card">
+      <div class="chain-title">🐛 Bug Fix</div>
+      <div class="chain-flow">
+        <span class="chain-step">Customer Support</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">QA Engineer</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Full-Stack Dev</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">DevOps</span>
+      </div>
+    </div>
+    <div class="chain-card">
+      <div class="chain-title">🔍 Website Audit</div>
+      <div class="chain-flow">
+        <span class="chain-step">Marketing Auditor</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">SEO Analyst</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Content Creator</span>
+        <span class="chain-arrow">→</span>
+        <span class="chain-step">Data Analyst</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule -->
+  <div class="section-header">
+    <h2>🕐 Daily Schedule</h2>
+    <div class="line"></div>
+  </div>
+
+  <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+    <div class="timeline">
+      <div class="timeline-time">Every 15m</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">🎯 Orchestrator</span>
+      </div>
+      <div class="timeline-time">Every 1h</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">📊 Data Analyst</span>
+      </div>
+      <div class="timeline-time">Every 4h</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">🔍 SEO Analyst</span>
+        <span class="timeline-agent">💬 Customer Support</span>
+      </div>
+      <div class="timeline-time">9:00 AM</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">🎯 Sales Prospector</span>
+        <span class="timeline-agent">📝 Content Creator</span>
+      </div>
+      <div class="timeline-time">10:00 AM</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">✉️ Outreach Manager</span>
+        <span class="timeline-agent">📱 Social Media</span>
+      </div>
+      <div class="timeline-time">Mon 9 AM</div>
+      <div class="timeline-content">
+        <span class="timeline-agent">💡 Product Strategist</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Feed -->
+  <div class="section-header">
+    <h2>📡 Live Activity Feed</h2>
+    <div class="line"></div>
+  </div>
+
+  <div class="feed-container" id="activity-feed">
+    <div class="feed-item">
+      <div class="feed-icon complete">✅</div>
+      <div class="feed-content">
+        <div class="feed-title">System initialized — all agents online</div>
+        <div class="feed-meta">Orchestrator • Waiting for first health data...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    My Team AI Agent System • Powered by Claude Sonnet • Auto-refreshes every 10s
+  </div>
+
+</div>
+
+<script>
+  // Auto-refresh dashboard from API
+  async function refreshDashboard() {
+    try {
+      const [healthRes, statsRes] = await Promise.all([
+        fetch('/health').then(r => r.json()).catch(() => null),
+        fetch('/stats').then(r => r.json()).catch(() => null),
+      ]);
+
+      if (healthRes) {
+        document.getElementById('system-status').textContent =
+          healthRes.status === 'healthy' ? 'System Online' : 'System Unhealthy';
+        document.getElementById('system-dot').className =
+          'status-dot ' + (healthRes.status === 'healthy' ? 'green' : 'red');
+        document.getElementById('uptime-display').textContent =
+          'Uptime: ' + formatUptime(healthRes.uptime);
+        document.getElementById('memory-display').textContent =
+          'Memory: ' + (healthRes.memory?.heap || '--');
+
+        // Update agent statuses
+        if (healthRes.agents) {
+          let activeCount = 0;
+          for (const [name, info] of Object.entries(healthRes.agents)) {
+            const el = document.getElementById('status-' + name);
+            if (el) {
+              const dot = el.querySelector('.agent-status-dot');
+              const text = el.querySelector('.agent-status-text');
+              if (info.disabled) {
+                el.className = 'agent-status disabled';
+                text.textContent = 'Disabled';
+              } else {
+                el.className = 'agent-status';
+                text.textContent = 'Active';
+                activeCount++;
+              }
+            }
+          }
+          document.getElementById('stat-agents').textContent = activeCount || '12';
+        }
+      }
+
+      if (statsRes) {
+        document.getElementById('stat-total').textContent = statsRes.totalTasks || '0';
+        document.getElementById('stat-completed').textContent = statsRes.completed || '0';
+        document.getElementById('stat-pending').textContent = statsRes.pending || '0';
+        document.getElementById('stat-failed').textContent = statsRes.failed || '0';
+      }
+
+      document.getElementById('last-update').textContent =
+        'Last refresh: ' + new Date().toLocaleTimeString();
+
+    } catch (e) {
+      document.getElementById('system-status').textContent = 'Connecting...';
+      document.getElementById('system-dot').className = 'status-dot orange';
+    }
+  }
+
+  function formatUptime(seconds) {
+    if (!seconds) return '--';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm ' + Math.floor(seconds % 60) + 's';
+  }
+
+  // Refresh every 10 seconds
+  refreshDashboard();
+  setInterval(refreshDashboard, 10000);
+</script>
+
+</body>
+</html>
