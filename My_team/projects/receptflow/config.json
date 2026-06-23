@@ -1,0 +1,28 @@
+{
+  "name": "receptflow",
+  "description": "AI-powered receptionist for small businesses",
+  "website": "https://receptflow.com",
+  "githubRepo": "receptflow",
+  "stack": {
+    "backend": "node.js",
+    "frontend": "react",
+    "database": "mongodb"
+  },
+  "icp": {
+    "titles": ["Owner", "Practice Manager", "Office Manager", "Receptionist"],
+    "industries": ["Healthcare", "Dental", "Legal", "Real Estate", "Trades"],
+    "companySize": "1-50",
+    "locations": ["Australia", "US", "UK"],
+    "painPoints": [
+      "Missing phone calls during busy hours",
+      "High cost of hiring a full-time receptionist",
+      "After-hours calls going to voicemail",
+      "Appointment scheduling bottlenecks"
+    ]
+  },
+  "brandVoice": "Friendly, professional, and straightforward. Speak like a helpful business advisor, not a tech company.",
+  "socialMedia": {
+    "linkedin": "receptflow",
+    "twitter": "receptflow"
+  }
+}

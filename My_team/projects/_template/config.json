@@ -1,0 +1,24 @@
+{
+  "name": "project-name",
+  "description": "One-line description of the project",
+  "website": "https://example.com",
+  "githubRepo": "repo-name",
+  "stack": {
+    "backend": "node.js",
+    "frontend": "react",
+    "database": "postgresql"
+  },
+  "icp": {
+    "titles": ["Owner", "Manager", "Director"],
+    "industries": ["Industry 1", "Industry 2"],
+    "companySize": "10-500",
+    "locations": ["Australia", "US", "UK"],
+    "painPoints": ["Pain point 1", "Pain point 2"]
+  },
+  "brandVoice": "Professional, friendly, and direct",
+  "socialMedia": {
+    "linkedin": "",
+    "twitter": "",
+    "instagram": ""
+  }
+}
