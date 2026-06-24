@@ -73,6 +73,7 @@ const notify = {
   support: (msg) => sendMessage('support', msg),
   reports: (msg) => sendMessage('reports', msg),
   alerts: (msg) => sendMessage('alerts', msg),
+  security: (msg) => sendMessage('security', msg),
 };
 
 function onCommand(callback) {

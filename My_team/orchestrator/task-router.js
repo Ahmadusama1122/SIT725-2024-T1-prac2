@@ -50,16 +50,21 @@ const AGENT_REGISTRY = {
     keywords: ['audit', 'website audit', 'marketing audit', 'score website', 'analyze website', 'site review', 'conversion audit', 'seo audit'],
     description: 'Full marketing audits of websites: content, SEO, conversion, competitive analysis, and PDF reports',
   },
+  'security-engineer': {
+    keywords: ['security', 'vulnerability', 'cve', 'hack', 'breach', 'ssl', 'owasp', 'pentest', 'secrets', 'scan code', 'audit security'],
+    description: 'Security scanning, vulnerability detection, dependency auditing, secrets detection, infrastructure hardening, penetration testing',
+  },
 };
 
 // Agent chains — complex tasks that need multiple agents in sequence
 const AGENT_CHAINS = {
-  'launch-project': ['product-strategist', 'fullstack-developer', 'qa-engineer', 'devops-engineer'],
+  'launch-project': ['product-strategist', 'fullstack-developer', 'qa-engineer', 'security-engineer', 'devops-engineer'],
   'marketing-campaign': ['seo-analyst', 'content-creator', 'social-media-manager', 'data-analyst'],
   'lead-generation': ['sales-prospector', 'outreach-manager', 'data-analyst'],
-  'new-feature': ['product-strategist', 'fullstack-developer', 'qa-engineer', 'content-creator'],
-  'bug-fix': ['customer-support', 'qa-engineer', 'fullstack-developer', 'devops-engineer'],
+  'new-feature': ['product-strategist', 'fullstack-developer', 'qa-engineer', 'security-engineer', 'content-creator'],
+  'bug-fix': ['customer-support', 'qa-engineer', 'fullstack-developer', 'security-engineer', 'devops-engineer'],
   'website-audit': ['marketing-auditor', 'seo-analyst', 'content-creator', 'data-analyst'],
+  'security-audit': ['security-engineer', 'devops-engineer', 'data-analyst'],
 };
 
 const CHAIN_KEYWORDS = {
@@ -69,6 +74,7 @@ const CHAIN_KEYWORDS = {
   'new-feature': ['new feature', 'add feature', 'feature request'],
   'bug-fix': ['bug reported', 'customer bug', 'production issue'],
   'website-audit': ['audit website', 'full audit', 'marketing audit', 'website review'],
+  'security-audit': ['security audit', 'pen test', 'vulnerability scan', 'security review', 'security check'],
 };
 
 function routeByKeywords(taskText) {

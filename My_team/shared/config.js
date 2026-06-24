@@ -62,6 +62,7 @@ module.exports = {
     reports: process.env.DISCORD_CHANNEL_REPORTS,
     alerts: process.env.DISCORD_CHANNEL_ALERTS,
     commands: process.env.DISCORD_CHANNEL_COMMANDS,
+    security: process.env.DISCORD_CHANNEL_SECURITY,
   },
   NOTION_API_KEY: process.env.NOTION_API_KEY,
   NOTION_BOARD_ID: process.env.NOTION_BOARD_ID,
