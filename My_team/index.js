@@ -121,7 +121,7 @@ app.get('/api/tasks', (req, res) => {
     const db = getDb();
     const limit = parseInt(req.query.limit) || 10;
     const tasks = db.prepare(`
-      SELECT id, title, agent, status, result, created_at, completed_at
+      SELECT id, input, agent, status, output, created_at, completed_at
       FROM tasks ORDER BY created_at DESC LIMIT ?
     `).all(limit);
     res.json(tasks);
