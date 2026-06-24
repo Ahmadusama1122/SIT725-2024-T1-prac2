@@ -172,12 +172,14 @@ const TOOL_REGISTRY = {
     },
     execute: async (input) => {
       const linkedinAuto = require('../shared/pipeline-linkedin-auto');
-      const browser = await linkedinAuto.launchBrowser();
+      await linkedinAuto.launchBrowser();
       try {
-        await linkedinAuto.sendConnectionRequest(browser, input.linkedinUrl, input.note || '');
-        return { success: true, message: `Connection request sent to ${input.linkedinUrl}` };
-      } finally {
-        await browser.close();
+        const result = await linkedinAuto.sendConnectionRequest(input.linkedinUrl, input.note || '');
+        return result.success
+          ? { success: true, message: `Connection request sent to ${input.linkedinUrl}` }
+          : { success: false, error: result.error };
+      } catch (err) {
+        return { success: false, error: err.message };
       }
     },
   },
@@ -194,12 +196,14 @@ const TOOL_REGISTRY = {
     },
     execute: async (input) => {
       const linkedinAuto = require('../shared/pipeline-linkedin-auto');
-      const browser = await linkedinAuto.launchBrowser();
+      await linkedinAuto.launchBrowser();
       try {
-        await linkedinAuto.sendDirectMessage(browser, input.linkedinUrl, input.message);
-        return { success: true, message: `DM sent to ${input.linkedinUrl}` };
-      } finally {
-        await browser.close();
+        const result = await linkedinAuto.sendDirectMessage(input.linkedinUrl, input.message);
+        return result.success
+          ? { success: true, message: `DM sent to ${input.linkedinUrl}` }
+          : { success: false, error: result.error };
+      } catch (err) {
+        return { success: false, error: err.message };
       }
     },
   },

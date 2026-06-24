@@ -192,6 +192,12 @@ async function apiRequest(endpoint, method = "GET", body = null) {
 const BROWSER_PROFILE_DIR = path.join(__dirname, "../logs/chrome-profile");
 
 async function launchBrowser() {
+  // Re-entrant guard: skip if browser is already running
+  if (_context && _page) {
+    log("Browser already running — reusing existing session");
+    return;
+  }
+
   log("Launching Chrome with persistent profile + stealth...");
   loadCookies();
 
