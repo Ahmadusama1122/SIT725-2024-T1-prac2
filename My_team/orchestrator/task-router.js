@@ -7,7 +7,7 @@ const AGENT_REGISTRY = {
     description: 'Market research, competitive analysis, PRDs, feature prioritization',
   },
   'fullstack-developer': {
-    keywords: ['build', 'code', 'develop', 'api', 'frontend', 'backend', 'database', 'implement', 'feature', 'app', 'website'],
+    keywords: ['build feature', 'write code', 'develop', 'fix bug', 'frontend', 'backend', 'implement feature', 'refactor', 'pull request'],
     description: 'Full-stack development, APIs, databases, feature implementation',
   },
   'qa-engineer': {
@@ -19,11 +19,11 @@ const AGENT_REGISTRY = {
     description: 'Deployment, Docker, CI/CD, monitoring, infrastructure',
   },
   'content-creator': {
-    keywords: ['blog', 'article', 'write', 'content', 'landing page', 'email', 'copy', 'lead magnet', 'documentation'],
+    keywords: ['blog', 'article', 'write article', 'write blog', 'content', 'landing page', 'copy', 'lead magnet', 'documentation', 'write content'],
     description: 'Blog posts, landing pages, email sequences, documentation',
   },
   'social-media-manager': {
-    keywords: ['social', 'post', 'twitter', 'linkedin post', 'instagram', 'carousel', 'schedule post', 'social media'],
+    keywords: ['social media', 'linkedin post', 'instagram', 'carousel', 'schedule post', 'post on linkedin', 'tweet'],
     description: 'Social media posts, carousels, posting schedule',
   },
   'seo-analyst': {
@@ -31,20 +31,20 @@ const AGENT_REGISTRY = {
     description: 'SEO, keyword research, content strategy, ranking optimization',
   },
   'sales-prospector': {
-    keywords: ['prospect', 'lead', 'apollo', 'find contacts', 'icp', 'lead gen', 'enrich', 'target list'],
+    keywords: ['prospect', 'lead', 'apollo', 'find contacts', 'icp', 'lead gen', 'enrich', 'target list', 'find clinic', 'find business', 'sales'],
     description: 'Lead generation, prospecting, Apollo searches, lead scoring',
   },
   'outreach-manager': {
-    keywords: ['outreach', 'cold email', 'linkedin message', 'sequence', 'follow up', 'campaign', 'personalize'],
-    description: 'LinkedIn outreach, cold emails, follow-up sequences',
+    keywords: ['outreach', 'cold email', 'linkedin message', 'linkedin dm', 'send dm', 'dms', 'linkdin', 'sequence', 'follow up', 'campaign', 'personalize', 'close lead', 'close deal', 'send email'],
+    description: 'LinkedIn outreach, cold emails, follow-up sequences, closing leads',
   },
   'customer-support': {
     keywords: ['support', 'ticket', 'customer', 'help', 'complaint', 'faq', 'respond'],
     description: 'Customer support, ticket responses, FAQ maintenance',
   },
   'data-analyst': {
-    keywords: ['report', 'analytics', 'kpi', 'metrics', 'dashboard', 'trend', 'data', 'performance'],
-    description: 'KPI tracking, reports, dashboards, anomaly detection',
+    keywords: ['report', 'analytics', 'kpi', 'metrics', 'dashboard', 'trend', 'performance', 'how is', 'how are', 'status report', 'weekly report', 'daily report', 'summary', 'numbers'],
+    description: 'KPI tracking, reports, dashboards, anomaly detection, system status',
   },
   'marketing-auditor': {
     keywords: ['audit', 'website audit', 'marketing audit', 'score website', 'analyze website', 'site review', 'conversion audit', 'seo audit'],

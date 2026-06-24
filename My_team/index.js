@@ -168,21 +168,23 @@ async function start() {
           return;
         }
 
-        // Natural language — route through task router
-        await notify.commands(`Routing your request${projectLabel}: *${message.substring(0, 200)}*`);
+        // Natural language — route based on user message ONLY (no system data)
+        const routingTask = { title: message, details: message, source: 'discord', project };
+        const routing = await routeTask(routingTask);
+
+        await notify.commands(`Routing your request${projectLabel} → **${routing.type === 'chain' ? routing.chain : routing.agent}**: *${message.substring(0, 200)}*`);
+
+        // Build the full task with system data for agent execution
         const task = {
           title: message,
           details: `${message}\n\n${systemData}`,
           source: 'discord',
           project,
         };
-        const routing = await routeTask(task);
 
         if (routing.type === 'chain') {
-          await notify.commands(`Starting chain **${routing.chain}**: ${routing.agents.join(' → ')}`);
           await executeChain(routing.chain, routing.agents, task);
         } else {
-          await notify.commands(`Routed to **${routing.agent}**`);
           await executeSingleAgent(routing.agent, task);
         }
       } catch (error) {
