@@ -415,54 +415,115 @@ async function getProfileUrn(vanityName) {
 
     // Extract member URN from the page
     const urnData = await _page.evaluate(() => {
-      // Method 1: Look for data-member-id or urn in code tags / embedded data
       const html = document.documentElement.innerHTML;
+      const results = { tried: [] };
 
-      // Look for ACoAA member IDs (LinkedIn's member ID format)
+      // Method 1: ACoAA URN pattern in HTML (most reliable)
       const acoMatch = html.match(/urn:li:f(?:s_miniProfile|sd_profile):(ACoAA[A-Za-z0-9_-]+)/);
       if (acoMatch) return { urn: `urn:li:fsd_profile:${acoMatch[1]}`, method: "html_urn" };
+      results.tried.push("html_urn");
 
-      // Look for member URN in data attributes
-      const memberIdEl = document.querySelector("[data-member-id]");
-      if (memberIdEl) {
-        const mid = memberIdEl.getAttribute("data-member-id");
-        return { urn: `urn:li:fsd_profile:${mid}`, method: "data_attr" };
-      }
-
-      // Look in embedded JSON-LD or microdata
-      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-      for (const s of scripts) {
-        try {
-          const data = JSON.parse(s.textContent);
-          if (data?.url?.includes("/in/")) {
-            // LD+JSON found but no direct URN — try other methods
-          }
-        } catch (_) {}
-      }
-
-      // Look for the profile entity in code elements (LinkedIn embeds data in code tags)
+      // Method 2: profileUrn or entityUrn in embedded JSON/code
       const codeTags = document.querySelectorAll("code");
       for (const code of codeTags) {
         try {
           const text = code.textContent;
-          if (text.includes("fsd_profile") || text.includes("fs_miniProfile")) {
-            const m = text.match(/(ACoAA[A-Za-z0-9_-]+)/);
-            if (m) return { urn: `urn:li:fsd_profile:${m[1]}`, method: "code_tag" };
+          // Try parsing as JSON first
+          if (text.startsWith("{") || text.startsWith("[")) {
+            const parsed = JSON.parse(text);
+            const jsonStr = JSON.stringify(parsed);
+            const m = jsonStr.match(/(ACoAA[A-Za-z0-9_-]{10,})/);
+            if (m) return { urn: `urn:li:fsd_profile:${m[1]}`, method: "code_json" };
           }
+          // Try regex on raw text
+          const m = text.match(/(ACoAA[A-Za-z0-9_-]{10,})/);
+          if (m) return { urn: `urn:li:fsd_profile:${m[1]}`, method: "code_tag" };
         } catch (_) {}
       }
+      results.tried.push("code_tags");
 
-      // Last resort: scan for ACoAA pattern anywhere in page
+      // Method 3: data-member-id attribute (skip if value is "0" or empty)
+      const memberIdEl = document.querySelector("[data-member-id]");
+      if (memberIdEl) {
+        const mid = memberIdEl.getAttribute("data-member-id");
+        if (mid && mid !== "0" && mid.length > 1) {
+          return { urn: `urn:li:fsd_profile:${mid}`, method: "data_attr" };
+        }
+      }
+      results.tried.push("data_attr");
+
+      // Method 4: Look in script tags for member ID patterns
+      const scripts = document.querySelectorAll("script");
+      for (const s of scripts) {
+        const text = s.textContent || "";
+        const m = text.match(/(ACoAA[A-Za-z0-9_-]{10,})/);
+        if (m) return { urn: `urn:li:fsd_profile:${m[1]}`, method: "script_tag" };
+        // Also try numeric member ID pattern
+        const numMatch = text.match(/\"memberIdentity\"\s*:\s*\"([^"]+)\"/);
+        if (numMatch && numMatch[1].length > 3) {
+          return { urn: `urn:li:fsd_profile:${numMatch[1]}`, method: "script_memberIdentity" };
+        }
+      }
+      results.tried.push("script_tags");
+
+      // Method 5: Global ACoAA scan on full HTML
       const globalMatch = html.match(/(ACoAA[A-Za-z0-9_-]{10,})/);
       if (globalMatch) return { urn: `urn:li:fsd_profile:${globalMatch[1]}`, method: "global_scan" };
+      results.tried.push("global_scan");
 
-      return { urn: null, method: "not_found" };
+      // Method 6: Look for numeric member IDs in data attributes
+      const allDataAttrs = document.querySelectorAll("[data-urn]");
+      for (const el of allDataAttrs) {
+        const urn = el.getAttribute("data-urn");
+        if (urn && urn.includes("fsd_profile")) {
+          const m = urn.match(/(ACoAA[A-Za-z0-9_-]+)/);
+          if (m) return { urn: `urn:li:fsd_profile:${m[1]}`, method: "data_urn_attr" };
+        }
+      }
+      results.tried.push("data_urn_attrs");
+
+      // Debug: capture a snippet of HTML around likely patterns for logging
+      const debugSnippets = [];
+      const profileMatch = html.match(/fsd_profile[^"]{0,80}/);
+      if (profileMatch) debugSnippets.push(`fsd_profile: ...${profileMatch[0]}...`);
+      const miniMatch = html.match(/miniProfile[^"]{0,80}/);
+      if (miniMatch) debugSnippets.push(`miniProfile: ...${miniMatch[0]}...`);
+      results.debug = debugSnippets.join(" | ");
+      results.htmlLength = html.length;
+
+      return { urn: null, method: "not_found", ...results };
     });
 
     if (urnData.urn) {
       log(`Found member URN via ${urnData.method}: ${urnData.urn}`);
     } else {
-      log(`Could not find member URN for ${vanityName} on profile page`);
+      log(`Could not find member URN for ${vanityName} — tried: ${(urnData.tried || []).join(", ")} | debug: ${urnData.debug || "none"} | htmlLength: ${urnData.htmlLength || 0}`);
+    }
+
+    // If page scraping didn't find URN, try the Voyager API as fallback
+    if (!urnData.urn) {
+      log(`Page scraping failed for ${vanityName}, trying Voyager API fallback...`);
+      try {
+        // Navigate back to feed first (API calls work better from feed context)
+        await _page.goto("https://www.linkedin.com/feed/", {
+          waitUntil: "domcontentloaded",
+          timeout: 15000,
+        });
+        await _page.waitForTimeout(1000 + Math.random() * 1000);
+
+        const profileData = await apiRequest(
+          `/identity/profiles/${vanityName}/profileView`
+        );
+        const profileJson = JSON.stringify(profileData);
+        const apiMatch = profileJson.match(/(ACoAA[A-Za-z0-9_-]{10,})/);
+        if (apiMatch) {
+          log(`Found member URN via Voyager API: urn:li:fsd_profile:${apiMatch[1]}`);
+          return `urn:li:fsd_profile:${apiMatch[1]}`;
+        }
+        log(`Voyager API returned data but no ACoAA pattern found`);
+      } catch (apiErr) {
+        log(`Voyager API fallback failed: ${apiErr.message}`);
+      }
     }
 
     // Navigate back to feed so subsequent API calls work from feed context
