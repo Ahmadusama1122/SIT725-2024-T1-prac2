@@ -5,6 +5,7 @@ const { init: initOrchestrator, getHealthStatus } = require('./orchestrator');
 const { initDiscord, onCommand, notify } = require('./shared/discord-notifier');
 const { getDb } = require('./shared/database');
 const { executeSingleAgent } = require('./orchestrator');
+const { startPipelines } = require('./pipelines/runner');
 
 const app = express();
 
@@ -100,6 +101,14 @@ async function start() {
   // Initialize orchestrator (starts scheduler + first run)
   initOrchestrator();
   console.log('[Orchestrator] Initialized');
+
+  // Start marketing pipeline systems (each has its own cron schedule)
+  try {
+    const pipelineStatus = startPipelines();
+    console.log(`[Pipelines] ${pipelineStatus.started}/${pipelineStatus.total} pipelines active`);
+  } catch (error) {
+    console.warn('[Pipelines] Failed to start:', error.message);
+  }
 
   await notify.general('My Team AI Agent System is online and running.');
 }
