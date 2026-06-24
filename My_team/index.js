@@ -100,6 +100,29 @@ app.get('/stats', (req, res) => {
   }
 });
 
+// Test endpoint to verify Playwright works in the container
+app.get('/test-playwright', async (req, res) => {
+  try {
+    const { chromium } = require('playwright-extra');
+    const stealth = require('puppeteer-extra-plugin-stealth');
+    chromium.use(stealth());
+
+    const context = await chromium.launchPersistentContext('/tmp/pw-test', {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    const page = context.pages()[0] || await context.newPage();
+    await page.goto('https://www.linkedin.com', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const title = await page.title();
+    const url = page.url();
+    await context.close();
+
+    res.json({ success: true, title, url, message: 'Playwright works!' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message, stack: error.stack?.split('\n').slice(0, 5) });
+  }
+});
+
 async function start() {
   console.log('=== My Team AI Agent System ===');
   console.log(`Starting at ${new Date().toISOString()}`);
