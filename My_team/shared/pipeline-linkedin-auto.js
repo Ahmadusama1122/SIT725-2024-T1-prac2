@@ -232,27 +232,36 @@ async function launchBrowser() {
     viewport: { width: 1440, height: 900 },
   });
 
-  // Add cookies from file
-  let cookies = [];
+  // Add cookies from file OR env var
+  let rawCookies = [];
   if (fs.existsSync(COOKIE_FILE)) {
     try {
-      const raw = JSON.parse(fs.readFileSync(COOKIE_FILE, "utf-8"));
-      cookies = raw.map(c => ({
-        name: c.name,
-        value: c.value.replace(/^"|"$/g, ""),
-        domain: c.domain,
-        path: c.path || "/",
-        secure: c.secure !== false,
-        httpOnly: c.httpOnly || false,
-        sameSite: c.sameSite === "no_restriction" ? "None" :
-                  c.sameSite === "lax" ? "Lax" :
-                  c.sameSite === "strict" ? "Strict" : "None",
-        ...(c.expirationDate && !c.session ? { expires: c.expirationDate } : {}),
-      }));
+      rawCookies = JSON.parse(fs.readFileSync(COOKIE_FILE, "utf-8"));
+      log(`Read ${rawCookies.length} cookies from file`);
     } catch (e) {
-      log(`Failed to parse cookies: ${e.message}`);
+      log(`Failed to parse cookie file: ${e.message}`);
     }
   }
+  if (rawCookies.length === 0 && config.linkedinCookies) {
+    try {
+      rawCookies = JSON.parse(config.linkedinCookies);
+      log(`Read ${rawCookies.length} cookies from env var`);
+    } catch (e) {
+      log(`Failed to parse LINKEDIN_COOKIES env: ${e.message}`);
+    }
+  }
+  const cookies = rawCookies.map(c => ({
+    name: c.name,
+    value: c.value.replace(/^"|"$/g, ""),
+    domain: c.domain,
+    path: c.path || "/",
+    secure: c.secure !== false,
+    httpOnly: c.httpOnly || false,
+    sameSite: c.sameSite === "no_restriction" ? "None" :
+              c.sameSite === "lax" ? "Lax" :
+              c.sameSite === "strict" ? "Strict" : "None",
+    ...(c.expirationDate && !c.session ? { expires: c.expirationDate } : {}),
+  }));
 
   if (cookies.length > 0) {
     await _context.addCookies(cookies);
