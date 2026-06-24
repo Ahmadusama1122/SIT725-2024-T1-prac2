@@ -10,6 +10,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --production
 
+# Install Playwright Chromium browser + system dependencies
+RUN npx playwright install --with-deps chromium
+
 COPY . .
 
 RUN mkdir -p /data logs
