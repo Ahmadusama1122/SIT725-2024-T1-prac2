@@ -1,12 +1,56 @@
 const express = require('express');
 const path = require('path');
-const { PORT } = require('./shared/config');
+const { PORT, listProjects } = require('./shared/config');
 const { init: initOrchestrator, getHealthStatus } = require('./orchestrator');
 const { initDiscord, onCommand, notify } = require('./shared/discord-notifier');
 const { getDb } = require('./shared/database');
 const { executeSingleAgent, executeChain } = require('./orchestrator');
 const { routeTask } = require('./orchestrator/task-router');
 const { startPipelines } = require('./pipelines/runner');
+
+// Detect which project a message is about
+function detectProject(text) {
+  const lower = text.toLowerCase();
+  const projects = listProjects();
+  for (const project of projects) {
+    if (lower.includes(project.toLowerCase())) return project;
+  }
+  return 'general';
+}
+
+// Build live system stats to inject into agent tasks
+function getSystemSnapshot() {
+  try {
+    const db = getDb();
+    const tasks = {
+      total: db.prepare('SELECT COUNT(*) as c FROM tasks').get().c,
+      completed: db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status = 'completed'").get().c,
+      failed: db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status = 'failed'").get().c,
+      pending: db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status = 'pending'").get().c,
+    };
+    const recentLogs = db.prepare(`
+      SELECT agent, action, result, tokens_used, duration_ms, created_at
+      FROM execution_logs ORDER BY created_at DESC LIMIT 20
+    `).all();
+    const agentStats = {};
+    const agents = db.prepare(`
+      SELECT agent, COUNT(*) as total,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed
+      FROM tasks GROUP BY agent
+    `).all();
+    for (const a of agents) agentStats[a.agent] = a;
+
+    return `## Live System Data (auto-injected)\n` +
+      `**Tasks:** ${tasks.total} total, ${tasks.completed} completed, ${tasks.failed} failed, ${tasks.pending} pending\n` +
+      `**Agent Stats:**\n${agents.map(a => `- ${a.agent}: ${a.total} tasks (${a.completed} done, ${a.failed} failed)`).join('\n')}\n` +
+      `**Recent Execution Logs:**\n${recentLogs.map(l => `- [${l.created_at}] ${l.agent}: ${l.action} (${l.tokens_used} tokens, ${l.duration_ms}ms)`).join('\n')}\n` +
+      `**Memory:** RSS ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB, Heap ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
+      `**Uptime:** ${Math.round(process.uptime() / 60)} minutes`;
+  } catch (e) {
+    return `## System Data: Error fetching — ${e.message}`;
+  }
+}
 
 const app = express();
 
@@ -105,27 +149,32 @@ async function start() {
           return;
         }
 
+        // Detect project from message
+        const project = detectProject(message);
+        const systemData = getSystemSnapshot();
+        const projectLabel = project !== 'general' ? ` [project: ${project}]` : '';
+
         // Direct agent command: @agent-name task
         const match = message.match(/^@(\S+)\s+(.+)$/s);
         if (match) {
           const [, agentName, taskDetails] = match;
-          await notify.commands(`Assigning to **${agentName}**: ${taskDetails.substring(0, 200)}`);
+          await notify.commands(`Assigning to **${agentName}**${projectLabel}: ${taskDetails.substring(0, 200)}`);
           await executeSingleAgent(agentName, {
             title: taskDetails,
-            details: taskDetails,
+            details: `${taskDetails}\n\n${systemData}`,
             source: 'discord',
-            project: 'general',
+            project,
           });
           return;
         }
 
         // Natural language — route through task router
-        await notify.commands(`Routing your request: *${message.substring(0, 200)}*`);
+        await notify.commands(`Routing your request${projectLabel}: *${message.substring(0, 200)}*`);
         const task = {
           title: message,
-          details: message,
+          details: `${message}\n\n${systemData}`,
           source: 'discord',
-          project: 'general',
+          project,
         };
         const routing = await routeTask(task);
 
