@@ -100,6 +100,36 @@ app.get('/stats', (req, res) => {
   }
 });
 
+// Recent execution logs endpoint
+app.get('/api/logs', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit) || 20;
+    const logs = db.prepare(`
+      SELECT agent, action, result, tokens_used, duration_ms, created_at
+      FROM execution_logs ORDER BY created_at DESC LIMIT ?
+    `).all(limit);
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Recent tasks endpoint
+app.get('/api/tasks', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit) || 10;
+    const tasks = db.prepare(`
+      SELECT id, title, agent, status, result, created_at, completed_at
+      FROM tasks ORDER BY created_at DESC LIMIT ?
+    `).all(limit);
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint to trigger agent tasks directly (for testing/internal use)
 app.use(express.json());
 app.post('/api/run', async (req, res) => {
