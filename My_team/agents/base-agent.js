@@ -28,7 +28,7 @@ function createAgent(agentName, discordChannel) {
       const response = await askClaude({
         systemPrompt,
         userMessage,
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         maxTokens: 4096,
         taskId: task.id,
         agent: agentName,

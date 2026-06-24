@@ -130,7 +130,7 @@ Respond with ONLY a JSON object:
 
 Pick the most specific match. If unsure, pick the closest single agent.`,
     userMessage: `Task: ${taskText}\nProject: ${project || 'general'}`,
-    model: 'claude-haiku-4-20250514',
+    model: 'claude-haiku-4-5',
     maxTokens: 100,
   });
 

@@ -4,7 +4,7 @@ const { logExecution } = require('./database');
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-20250514', maxTokens = 4096, taskId, agent }) {
+async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6', maxTokens = 4096, taskId, agent }) {
   const startTime = Date.now();
 
   try {
