@@ -280,6 +280,113 @@ const TOOL_REGISTRY = {
       return { success: true, imagePath };
     },
   },
+
+  // ── Cost Guardian Tools ───────────────────────────────────────────────
+
+  get_token_usage_report: {
+    description: 'Get token usage per agent for the last N hours. Shows total tokens, call counts, and averages.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        hours: { type: 'number', description: 'Hours to look back (default 24)' },
+      },
+    },
+    execute: async (input) => {
+      const { getTokenUsageReport } = require('../shared/database');
+      const report = getTokenUsageReport(input.hours || 24);
+      const totalTokens = report.reduce((sum, r) => sum + (r.total_tokens || 0), 0);
+      return { totalTokens, agentBreakdown: report };
+    },
+  },
+
+  get_duplicate_detection: {
+    description: 'Detect agents that ran multiple times within a short window (potential duplicates wasting money).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        windowMinutes: { type: 'number', description: 'Time window in minutes to check for duplicates (default 30)' },
+      },
+    },
+    execute: async (input) => {
+      const { getDuplicateRuns } = require('../shared/database');
+      const duplicates = getDuplicateRuns(input.windowMinutes || 30);
+      // Group by agent
+      const grouped = {};
+      for (const d of duplicates) {
+        if (!grouped[d.agent]) grouped[d.agent] = [];
+        grouped[d.agent].push({ taskId: d.task_id, createdAt: d.created_at, status: d.status, nearbyRuns: d.nearby_runs });
+      }
+      return { duplicateAgents: Object.keys(grouped), details: grouped };
+    },
+  },
+
+  get_agent_run_history: {
+    description: 'Get detailed run history for a specific agent including tokens used per run.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', description: 'Agent name to check' },
+        hours: { type: 'number', description: 'Hours to look back (default 24)' },
+      },
+      required: ['agent'],
+    },
+    execute: async (input) => {
+      const { getAgentRunHistory } = require('../shared/database');
+      return { agent: input.agent, runs: getAgentRunHistory(input.agent, input.hours || 24) };
+    },
+  },
+
+  disable_agent: {
+    description: 'Disable a misbehaving agent from scheduled runs. The agent will be skipped by the scheduler until re-enabled.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', description: 'Agent name to disable' },
+        reason: { type: 'string', description: 'Why this agent is being disabled' },
+      },
+      required: ['agent', 'reason'],
+    },
+    execute: async (input) => {
+      if (input.agent === 'orchestrator' || input.agent === 'cost-guardian') {
+        return { success: false, error: 'Cannot disable orchestrator or cost-guardian' };
+      }
+      const { getDisabledAgents, setDisabledAgents } = require('../shared/database');
+      const disabled = getDisabledAgents();
+      disabled[input.agent] = { reason: input.reason, disabledAt: new Date().toISOString() };
+      setDisabledAgents(disabled);
+      return { success: true, message: `${input.agent} disabled: ${input.reason}` };
+    },
+  },
+
+  enable_agent: {
+    description: 'Re-enable a previously disabled agent so it can run on schedule again.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', description: 'Agent name to re-enable' },
+      },
+      required: ['agent'],
+    },
+    execute: async (input) => {
+      const { getDisabledAgents, setDisabledAgents } = require('../shared/database');
+      const disabled = getDisabledAgents();
+      if (!disabled[input.agent]) {
+        return { success: false, message: `${input.agent} is not disabled` };
+      }
+      delete disabled[input.agent];
+      setDisabledAgents(disabled);
+      return { success: true, message: `${input.agent} re-enabled` };
+    },
+  },
+
+  get_disabled_agents: {
+    description: 'List all currently disabled agents and why they were disabled.',
+    input_schema: { type: 'object', properties: {} },
+    execute: async () => {
+      const { getDisabledAgents } = require('../shared/database');
+      return getDisabledAgents();
+    },
+  },
 };
 
 // ── Per-Agent Tool Whitelists ───────────────────────────────────────────
@@ -299,6 +406,7 @@ const AGENT_TOOLS = {
   'qa-engineer':          ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet'],
   'product-strategist':   ['read_sheet', 'search_people', 'send_email', 'create_email_draft', 'search_emails'],
   'marketing-auditor':    ['read_sheet', 'send_email', 'create_email_draft', 'search_emails', 'append_sheet_row'],
+  'cost-guardian':        ['get_token_usage_report', 'get_duplicate_detection', 'get_agent_run_history', 'disable_agent', 'enable_agent', 'get_disabled_agents'],
 };
 
 // ── Build Claude Tool Schemas ───────────────────────────────────────────

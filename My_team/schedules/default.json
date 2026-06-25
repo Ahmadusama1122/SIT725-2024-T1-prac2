@@ -1,6 +1,6 @@
 {
   "every_30_minutes": ["orchestrator"],
-  "every_12_hours": ["data-analyst", "customer-support"],
+  "every_12_hours": ["data-analyst", "customer-support", "cost-guardian"],
   "daily_6am": ["security-engineer"],
   "daily_9am": ["sales-prospector", "content-creator", "seo-analyst"],
   "daily_10am": ["outreach-manager", "social-media-manager"],

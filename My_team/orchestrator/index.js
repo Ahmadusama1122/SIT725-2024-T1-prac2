@@ -1,7 +1,7 @@
 const { routeTask, AGENT_CHAINS } = require('./task-router');
 const { sortByPriority } = require('./priority-engine');
 const { initScheduler } = require('./scheduler');
-const { createTask, updateTaskStatus, getPendingTasks, getFailedTasks, incrementRetry, getAgentStats } = require('../shared/database');
+const { createTask, updateTaskStatus, getPendingTasks, getFailedTasks, incrementRetry, getAgentStats, getDisabledAgents } = require('../shared/database');
 const { notify } = require('../shared/discord-notifier');
 const { getPendingTasks: getNotionTasks, updateTaskStatus: updateNotionStatus } = require('../shared/notion-client');
 const { getOpenIssues } = require('../shared/github-client');
@@ -209,6 +209,17 @@ async function handleScheduledAgent(agentName, trigger) {
     return;
   }
 
+  // Check if agent is disabled by cost-guardian
+  try {
+    const disabled = getDisabledAgents();
+    if (disabled[agentName]) {
+      console.log(`[Scheduler] Skipping ${agentName} — disabled by cost-guardian: ${disabled[agentName].reason}`);
+      return;
+    }
+  } catch (e) {
+    // If check fails, proceed
+  }
+
   // Deduplication: skip if this agent already ran in the last 30 minutes
   try {
     const stats = getAgentStats(agentName, 0.5); // last 30 minutes
@@ -238,11 +249,16 @@ async function handleScheduledAgent(agentName, trigger) {
 function getHealthStatus() {
   const agents = getAgentNames();
   const status = {};
+  let disabled = {};
+  try { disabled = getDisabledAgents(); } catch (e) { /* ignore */ }
+
   for (const agent of agents) {
     const stats = getAgentStats(agent, 24);
+    const costDisabled = !!disabled[agent];
     status[agent] = {
       ...stats,
-      disabled: (agentFailCounts[agent] || 0) >= 3,
+      disabled: costDisabled || (agentFailCounts[agent] || 0) >= 3,
+      disabledReason: costDisabled ? disabled[agent].reason : (agentFailCounts[agent] || 0) >= 3 ? '3 consecutive failures' : null,
       consecutiveFailures: agentFailCounts[agent] || 0,
     };
   }

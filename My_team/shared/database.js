@@ -150,6 +150,65 @@ function getAgentStats(agent, hours = 24) {
   `).get(agent, hours);
 }
 
+// ── Cost Guardian Queries ──────────────────────────────────────────────
+
+function getTokenUsageReport(hours = 24) {
+  const d = getDb();
+  return d.prepare(`
+    SELECT agent,
+      COUNT(*) as total_calls,
+      SUM(tokens_used) as total_tokens,
+      AVG(tokens_used) as avg_tokens,
+      MAX(tokens_used) as max_tokens,
+      SUM(duration_ms) as total_duration_ms
+    FROM execution_logs
+    WHERE created_at > datetime('now', '-' || ? || ' hours')
+      AND tokens_used > 0
+    GROUP BY agent
+    ORDER BY total_tokens DESC
+  `).all(hours);
+}
+
+function getDuplicateRuns(windowMinutes = 30) {
+  const d = getDb();
+  return d.prepare(`
+    SELECT t1.agent, t1.id as task_id, t1.created_at, t1.status,
+      (SELECT COUNT(*) FROM tasks t2
+       WHERE t2.agent = t1.agent
+         AND t2.id != t1.id
+         AND ABS(strftime('%s', t2.created_at) - strftime('%s', t1.created_at)) < ?
+      ) as nearby_runs
+    FROM tasks t1
+    WHERE t1.created_at > datetime('now', '-24 hours')
+    HAVING nearby_runs > 0
+    ORDER BY t1.agent, t1.created_at
+  `).all(windowMinutes * 60);
+}
+
+function getAgentRunHistory(agent, hours = 24) {
+  const d = getDb();
+  return d.prepare(`
+    SELECT t.id, t.status, t.source, t.created_at, t.completed_at,
+      (SELECT SUM(e.tokens_used) FROM execution_logs e WHERE e.task_id = t.id) as tokens_used,
+      (SELECT MAX(e.action) FROM execution_logs e WHERE e.task_id = t.id AND e.action LIKE 'claude_api_call%') as call_type
+    FROM tasks t
+    WHERE t.agent = ? AND t.created_at > datetime('now', '-' || ? || ' hours')
+    ORDER BY t.created_at DESC
+  `).all(agent, hours);
+}
+
+function getDisabledAgents() {
+  const d = getDb();
+  const row = d.prepare(
+    `SELECT value FROM agent_memory WHERE agent = 'cost-guardian' AND project = 'system' AND key = 'disabled_agents'`
+  ).get();
+  return row ? JSON.parse(row.value) : {};
+}
+
+function setDisabledAgents(disabledMap) {
+  setMemory('cost-guardian', 'system', 'disabled_agents', disabledMap);
+}
+
 module.exports = {
   getDb,
   createTask,
@@ -162,4 +221,9 @@ module.exports = {
   getAllMemory,
   logExecution,
   getAgentStats,
+  getTokenUsageReport,
+  getDuplicateRuns,
+  getAgentRunHistory,
+  getDisabledAgents,
+  setDisabledAgents,
 };

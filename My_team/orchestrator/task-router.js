@@ -54,6 +54,10 @@ const AGENT_REGISTRY = {
     keywords: ['security', 'vulnerability', 'cve', 'hack', 'breach', 'ssl', 'owasp', 'pentest', 'secrets', 'scan code', 'audit security'],
     description: 'Security scanning, vulnerability detection, dependency auditing, secrets detection, infrastructure hardening, penetration testing',
   },
+  'cost-guardian': {
+    keywords: ['cost', 'api cost', 'token usage', 'spending', 'budget', 'expensive', 'billing', 'save money', 'reduce cost', 'token report'],
+    description: 'API cost monitoring, duplicate run detection, agent budget enforcement, spending reports',
+  },
 };
 
 // Agent chains — complex tasks that need multiple agents in sequence
