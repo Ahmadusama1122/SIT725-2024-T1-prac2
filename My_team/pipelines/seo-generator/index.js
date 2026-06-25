@@ -58,6 +58,63 @@ const KEYWORDS = [
   "AI receptionist Sydney small business",
   "AI receptionist Brisbane small business",
   "AI receptionist Perth small business",
+
+  // ===== LOCALIZED KEYWORD CLUSTERS (City × Niche) =====
+
+  // --- Melbourne clusters ---
+  "AI receptionist for dentists Melbourne",
+  "after hours answering service Melbourne",
+  "AI receptionist for law firms Melbourne",
+  "virtual receptionist for trades Melbourne",
+  "AI phone answering for real estate Melbourne",
+  "after hours call handling Melbourne small business",
+
+  // --- Sydney clusters ---
+  "AI receptionist for dentists Sydney",
+  "after hours answering service Sydney",
+  "AI receptionist for law firms Sydney",
+  "virtual receptionist for trades Sydney",
+  "AI phone answering for real estate Sydney",
+  "after hours call handling Sydney small business",
+
+  // --- Brisbane clusters ---
+  "AI receptionist for dentists Brisbane",
+  "after hours answering service Brisbane",
+  "virtual receptionist for small business Brisbane",
+
+  // --- Perth clusters ---
+  "AI receptionist for dentists Perth",
+  "after hours answering service Perth",
+  "virtual receptionist for small business Perth",
+
+  // --- Adelaide clusters ---
+  "AI receptionist Adelaide small business",
+  "after hours answering service Adelaide",
+  "virtual receptionist Adelaide",
+
+  // --- Gold Coast clusters ---
+  "AI receptionist Gold Coast small business",
+  "after hours answering service Gold Coast",
+
+  // --- Niche × pain point clusters ---
+  "how dentists lose patients from missed calls",
+  "after hours lead capture for law firms Australia",
+  "why plumbers need an AI receptionist",
+  "how real estate agents miss leads after hours",
+  "AI receptionist for med spas and beauty clinics",
+  "electrician missed call cost Australia",
+  "cleaning business lead capture after hours",
+  "landscaper phone answering service Australia",
+  "physiotherapy clinic after hours booking",
+  "accounting firm lead capture after hours",
+
+  // --- Seasonal / trend clusters ---
+  "best AI tools for small business Australia 2026",
+  "how to automate customer service small business",
+  "AI chatbot vs AI receptionist for small business",
+  "cost of missed calls for Australian businesses",
+  "how to get more Google reviews for your business",
+  "local SEO tips for small business Australia 2026",
 ];
 
 // ---------------------------------------------------------------------------
@@ -193,19 +250,52 @@ const INTERNAL_LINKS = [
   { slug: "ai-receptionist-melbourne-small-business", title: "AI Receptionist Melbourne Small Business" },
   { slug: "how-to-capture-leads-from-your-website-after-hours", title: "How to Capture Leads After Hours" },
   { slug: "ai-receptionist-vs-human-receptionist", title: "AI Receptionist vs Human Receptionist" },
+  // Niche landing pages (zipper matrix links)
+  { slug: "ai-receptionist-for-dentists-in-melbourne", title: "AI Receptionist for Dentists in Melbourne", isMatrix: true },
+  { slug: "ai-receptionist-for-dentists-in-sydney", title: "AI Receptionist for Dentists in Sydney", isMatrix: true },
+  { slug: "ai-receptionist-for-law-firms-in-melbourne", title: "AI Receptionist for Law Firms in Melbourne", isMatrix: true },
+  { slug: "ai-receptionist-for-law-firms-in-sydney", title: "AI Receptionist for Law Firms in Sydney", isMatrix: true },
+  { slug: "ai-receptionist-for-med-spas-in-melbourne", title: "AI Receptionist for Med Spas in Melbourne", isMatrix: true },
+  { slug: "ai-receptionist-for-plumbers-in-melbourne", title: "AI Receptionist for Plumbers in Melbourne", isMatrix: true },
+  { slug: "ai-receptionist-for-electricians-in-sydney", title: "AI Receptionist for Electricians in Sydney", isMatrix: true },
+  { slug: "ai-receptionist-for-real-estate-agents-in-brisbane", title: "AI Receptionist for Real Estate Agents in Brisbane", isMatrix: true },
 ];
 
 async function generateArticle(keyword) {
+  // Detect if keyword is city-specific
+  const cityNames = ["Melbourne", "Sydney", "Brisbane", "Perth", "Adelaide", "Gold Coast", "Auckland", "Wellington"];
+  const detectedCity = cityNames.find((c) => keyword.toLowerCase().includes(c.toLowerCase()));
+
   // Pick 2-3 related internal links (exclude the current keyword's slug)
+  // For localized keywords, prefer matrix page links
   const currentSlug = slugify(keyword);
+  const preferMatrix = !!detectedCity;
   const relatedLinks = INTERNAL_LINKS
     .filter((l) => l.slug !== currentSlug)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3)
-    .map((l) => `- [${l.title}](https://www.receptflow.com/blog/${l.slug})`)
+    .sort((a, b) => {
+      // If localized keyword, prefer matrix links; otherwise prefer blog links
+      if (preferMatrix) return (b.isMatrix ? 1 : 0) - (a.isMatrix ? 1 : 0);
+      return (a.isMatrix ? 1 : 0) - (b.isMatrix ? 1 : 0);
+    })
+    .slice(0, 4)
+    .map((l) => {
+      const base = l.isMatrix
+        ? `- [${l.title}](https://www.receptflow.com/${l.slug})`
+        : `- [${l.title}](https://www.receptflow.com/blog/${l.slug})`;
+      return base;
+    })
     .join("\n");
 
-  const systemPrompt = `You are an expert SEO content writer for ReceptFlow — an AI receptionist for small businesses in Australia that answers calls 24/7, qualifies leads, and books appointments into Google Calendar.
+  // Build city-specific instructions
+  const cityInstruction = detectedCity
+    ? `This is a LOCALIZED blog post targeting ${detectedCity}. You MUST:
+- Mention ${detectedCity} in the title, introduction, and at least 3 H2 headings
+- Reference specific ${detectedCity} suburbs or areas (e.g. ${detectedCity === "Melbourne" ? "Richmond, South Yarra, Fitzroy" : detectedCity === "Sydney" ? "Bondi, Surry Hills, Parramatta" : detectedCity === "Brisbane" ? "Fortitude Valley, New Farm, West End" : detectedCity === "Perth" ? "Fremantle, Subiaco, Joondalup" : detectedCity === "Adelaide" ? "Norwood, Glenelg, Unley" : detectedCity === "Gold Coast" ? "Surfers Paradise, Broadbeach, Burleigh Heads" : detectedCity === "Auckland" ? "Ponsonby, Parnell, Newmarket" : "Thorndon, Te Aro, Kelburn"})
+- Include local context: competition level, local business culture, time zone considerations
+- Link to the city-specific landing page where relevant`
+    : `Mention Melbourne or another specific Australian city at least twice.`;
+
+  const systemPrompt = `You are an expert SEO content writer for ReceptFlow — an AI receptionist for small businesses in Australia and New Zealand that answers calls 24/7, qualifies leads, and books appointments into Google Calendar.
 
 Write a 1,800-2,000 word SEO blog post targeting this keyword: "${keyword}"
 
@@ -214,6 +304,8 @@ SEO rules:
 - Use related long-tail variations naturally (e.g. "after-hours phone answering", "virtual receptionist", "automated call handling")
 - Keep paragraphs short (2-4 sentences max) for readability and featured snippet eligibility
 - Use Australian spelling throughout (recognise, organisation, colour, etc.)
+
+${cityInstruction}
 
 Structure:
 - H1: compelling, click-worthy title that includes the keyword (under 60 characters if possible)
@@ -225,7 +317,6 @@ ${relatedLinks}
 - CTA at end: "Start your free 7-day trial at receptflow.com — live in 15 minutes"
 
 Brand voice: helpful, direct, conversational. Write like you're explaining to a mate who owns a small business — not like a marketing brochure. No fluff, no filler.
-Mention Melbourne or another specific Australian city at least twice.
 Include at least 2 specific dollar amounts or statistics to build credibility.
 Format: markdown. Do NOT include frontmatter — just the article starting with the H1.`;
 
