@@ -24,7 +24,7 @@ async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6
 
     // Tool-use loop: keep going while Claude wants to call tools
     let loopCount = 0;
-    const MAX_TOOL_LOOPS = 10;
+    const MAX_TOOL_LOOPS = 5;
 
     while (response.stop_reason === 'tool_use' && onToolCall && loopCount < MAX_TOOL_LOOPS) {
       loopCount++;

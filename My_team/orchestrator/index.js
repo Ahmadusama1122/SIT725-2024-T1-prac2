@@ -209,6 +209,17 @@ async function handleScheduledAgent(agentName, trigger) {
     return;
   }
 
+  // Deduplication: skip if this agent already ran in the last 30 minutes
+  try {
+    const stats = getAgentStats(agentName, 0.5); // last 30 minutes
+    if (stats && stats.total_tasks > 0) {
+      console.log(`[Scheduler] Skipping ${agentName} — already ran ${stats.total_tasks} time(s) in last 30 min`);
+      return;
+    }
+  } catch (e) {
+    // If stats check fails, proceed with the run
+  }
+
   // Create a scheduled task for the agent
   const task = {
     title: `Scheduled run: ${agentName}`,

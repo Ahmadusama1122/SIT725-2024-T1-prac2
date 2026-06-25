@@ -1,9 +1,8 @@
 {
-  "every_15_minutes": ["orchestrator"],
-  "every_hour": ["data-analyst"],
-  "every_4_hours": ["seo-analyst", "customer-support"],
+  "every_30_minutes": ["orchestrator"],
+  "every_12_hours": ["data-analyst", "customer-support"],
   "daily_6am": ["security-engineer"],
-  "daily_9am": ["sales-prospector", "content-creator"],
+  "daily_9am": ["sales-prospector", "content-creator", "seo-analyst"],
   "daily_10am": ["outreach-manager", "social-media-manager"],
   "weekly_monday_9am": ["product-strategist"]
 }

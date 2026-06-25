@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'my-team',
       script: 'index.js',
-      cron_restart: '0 */6 * * *',
+      cron_restart: '0 0 * * *',
       max_memory_restart: '800M',
       error_file: 'logs/error.log',
       out_file: 'logs/output.log',

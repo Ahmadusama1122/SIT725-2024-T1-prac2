@@ -348,12 +348,17 @@ function createAgent(agentName, discordChannel) {
       // Get tools for this agent
       const tools = getToolsForAgent(agentName);
 
+      // Use cheaper model for scheduled runs to reduce API costs
+      const isScheduled = task.source === 'scheduled' || (task.title && task.title.startsWith('Scheduled run:'));
+      const model = isScheduled ? 'claude-haiku-4-5' : 'claude-sonnet-4-6';
+      const maxTokens = isScheduled ? 1024 : 4096;
+
       // Call Claude with tool-use support
       const response = await askClaude({
         systemPrompt,
         userMessage,
-        model: 'claude-sonnet-4-6',
-        maxTokens: 4096,
+        model,
+        maxTokens,
         taskId: task.id,
         agent: agentName,
         tools: tools.length > 0 ? tools : undefined,

@@ -4,8 +4,10 @@ const fs = require('fs');
 
 const SCHEDULE_CRON_MAP = {
   'every_15_minutes': '*/15 * * * *',
+  'every_30_minutes': '*/30 * * * *',
   'every_hour': '0 * * * *',
   'every_4_hours': '0 */4 * * *',
+  'every_12_hours': '0 */12 * * *',
   'daily_6am': '0 6 * * *',
   'daily_9am': '0 9 * * *',
   'daily_10am': '0 10 * * *',

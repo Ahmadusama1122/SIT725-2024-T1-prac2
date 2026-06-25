@@ -10,9 +10,9 @@ const client = new Anthropic({ apiKey: config.anthropicApiKey });
  * @param {number} maxTokens
  * @returns {Promise<string>} The text response
  */
-async function callClaude(systemPrompt, userPrompt, maxTokens = 500) {
+async function callClaude(systemPrompt, userPrompt, maxTokens = 500, model = "claude-haiku-4-5") {
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model,
     max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
