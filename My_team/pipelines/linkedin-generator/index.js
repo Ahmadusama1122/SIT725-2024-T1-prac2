@@ -141,6 +141,80 @@ const POST_TOPICS = [
     imageHeadline: "Saturday: busiest day for enquiries. Hardest day to reach you.",
     imageSubtext: "The gap between demand and availability is costing you.",
   },
+
+  // ===== BUILD IN PUBLIC — Founder Journey Posts =====
+  {
+    theme: "bip-first-users",
+    hook: "Our first 5 users weren't strangers. They were a dentist mate, my barber, and 3 business owners I cold-messaged on LinkedIn.",
+    niche: "founder",
+    angle: "How we got our first users through personal outreach, not marketing",
+    imageHeadline: "Our first 5 users came from personal messages, not marketing",
+    imageSubtext: "The best early users are people who trust you enough to try.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-building-feedback",
+    hook: "A user told me our product was confusing. I wanted to defend it. Instead I shut up and listened. That conversation redesigned our entire onboarding.",
+    niche: "founder",
+    angle: "Honest user feedback is uncomfortable but essential for product growth",
+    imageHeadline: "The best product feedback hurts to hear",
+    imageSubtext: "A user called our product confusing. We rebuilt onboarding that week.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-revenue-milestone",
+    hook: "We hit our first paying customer without running a single ad. Just one genuinely useful product and one honest conversation.",
+    niche: "founder",
+    angle: "First paying customer came from solving a real problem, not advertising",
+    imageHeadline: "First paying customer. Zero ads. One real conversation.",
+    imageSubtext: "Solve a real problem. The revenue follows.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-content-game",
+    hook: "I published 30 LinkedIn posts before one got more than 10 likes. Post 31 got 2,000 views. Consistency beats virality.",
+    niche: "founder",
+    angle: "Content marketing is a long game — consistency is the only strategy",
+    imageHeadline: "30 posts before anything clicked. Post 31 changed everything.",
+    imageSubtext: "Consistency beats virality. Every single time.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-referral-power",
+    hook: "One happy user referred 3 new signups last month. Zero cost. More trust than any ad could buy.",
+    niche: "founder",
+    angle: "Referrals from happy users are the most powerful acquisition channel",
+    imageHeadline: "One happy user. Three new signups. $0 in ad spend.",
+    imageSubtext: "Serve your users well. They become your sales team.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-bootstrapping-truth",
+    hook: "Bootstrapping a SaaS means your revenue funds your growth. There is no safety net. Every dollar you spend on acquiring a user needs to come back.",
+    niche: "founder",
+    angle: "The discipline of bootstrapping — revenue-funded growth",
+    imageHeadline: "No VC. No safety net. Every dollar has to come back.",
+    imageSubtext: "Bootstrapping forces discipline that funded startups never learn.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-lesson-speed",
+    hook: "I spent 3 months building a feature nobody asked for. Now I ship MVPs in a week and let users decide what stays.",
+    niche: "founder",
+    angle: "Ship fast, iterate based on user feedback, don't build in a vacuum",
+    imageHeadline: "3 months on a feature nobody wanted. Now we ship in a week.",
+    imageSubtext: "Let users decide what stays. Build what they need.",
+    buildInPublic: true,
+  },
+  {
+    theme: "bip-advocate-users",
+    hook: "Your first 5 users aren't just users. They're co-builders. Give them a voice in your product and they'll bring their network to your door.",
+    niche: "founder",
+    angle: "Turn early users into advocates by making them feel ownership",
+    imageHeadline: "Your first 5 users are co-builders, not customers",
+    imageSubtext: "Give them a voice. They'll bring their network.",
+    buildInPublic: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -163,7 +237,28 @@ function pickTopic() {
 // Generate LinkedIn post using Claude
 // ---------------------------------------------------------------------------
 async function generatePost(topic) {
-  const systemPrompt = `You are a LinkedIn content strategist for Usama Ahmad, founder of ReceptFlow — an AI receptionist for Australian small businesses.
+  const isBIP = topic.buildInPublic;
+
+  const bipPrompt = `You are a LinkedIn content strategist for Usama Ahmad, founder of ReceptFlow — an AI receptionist for Australian small businesses.
+
+Write a "build in public" LinkedIn post that shares a genuine founder lesson or milestone. This is NOT a marketing post — it's a founder sharing their journey openly.
+
+Rules:
+- Start with the hook concept — make it personal and real
+- Write in first person as Usama — a bootstrapped founder being transparent
+- Share ONE specific lesson, mistake, or milestone with real context
+- Be vulnerable — share what went wrong, not just what went right
+- Short paragraphs (1-2 sentences each) — LinkedIn rewards whitespace
+- End with a question that invites other founders or business owners to share their experience
+- Mention ReceptFlow naturally as the product you're building — it's part of the story, not a pitch
+- Total length: 150-200 words
+- Use plain text — no markdown, no bullet points, no emojis
+- Australian English spelling
+- Do NOT use hashtags
+
+The post should feel like a real founder sharing a real moment — raw and honest, not polished marketing.`;
+
+  const painPointPrompt = `You are a LinkedIn content strategist for Usama Ahmad, founder of ReceptFlow — an AI receptionist for Australian small businesses.
 
 Write a LinkedIn post that will get high engagement. The post is about a PROBLEM that small businesses face — NOT about ReceptFlow directly.
 
@@ -182,6 +277,8 @@ Rules:
 - Do NOT use hashtags — they reduce reach on LinkedIn in 2026
 
 The post should feel like a real founder sharing a genuine observation, not marketing content.`;
+
+  const systemPrompt = isBIP ? bipPrompt : painPointPrompt;
 
   const userPrompt = `Write a LinkedIn post based on this topic:
 

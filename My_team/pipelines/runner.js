@@ -1,6 +1,6 @@
 /**
  * Pipeline Runner
- * Starts all 18 marketing pipeline systems.
+ * Starts all 19 marketing pipeline systems.
  * Each pipeline has its own internal cron schedule — this just imports them.
  */
 
@@ -28,6 +28,7 @@ const PIPELINES = [
 
   // Social Media Manager domain
   { name: 'linkedin-generator', agent: 'social-media-manager' },
+  { name: 'content-repurposer', agent: 'social-media-manager' },
 
   // Data Analyst domain
   { name: 'intelligence', agent: 'data-analyst' },
