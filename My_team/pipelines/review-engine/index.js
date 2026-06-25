@@ -14,10 +14,16 @@ const TRIAL_TAB = "Trial Users";
 const REVIEW_TAB = "Review Requests";
 const ALERT_EMAIL = "ahmadusama200@gmail.com";
 
-// Set this in Railway env vars — your Google Business review link
+// Set these in Railway env vars — review platform links
 const GOOGLE_REVIEW_URL =
   process.env.GOOGLE_REVIEW_URL ||
   "https://g.page/r/receptflow/review";
+const G2_REVIEW_URL =
+  process.env.G2_REVIEW_URL ||
+  "https://www.g2.com/products/receptflow/reviews";
+const TRUSTPILOT_REVIEW_URL =
+  process.env.TRUSTPILOT_REVIEW_URL ||
+  "https://www.trustpilot.com/review/receptflow.com";
 
 // Minimum days active before asking for review
 const MIN_DAYS_ACTIVE = 7;
@@ -154,18 +160,28 @@ Founder, ReceptFlow`,
 // ---------------------------------------------------------------------------
 // Step 3 — Generate review request email (for happy users)
 // ---------------------------------------------------------------------------
-async function generateReviewRequestEmail(user) {
+async function generateReviewRequestEmail(user, platform) {
   const firstName = user.name.split(" ")[0];
 
-  const prompt = `Write a short email asking ${firstName} to leave a Google review for ReceptFlow.
+  // Rotate platforms: Google (primary), G2 (B2B credibility), Trustpilot (general trust)
+  const platformConfig = {
+    google: { name: "Google", url: GOOGLE_REVIEW_URL, why: "It helps other local business owners find us" },
+    g2: { name: "G2", url: G2_REVIEW_URL, why: "It helps other business owners evaluating software find honest reviews" },
+    trustpilot: { name: "Trustpilot", url: TRUSTPILOT_REVIEW_URL, why: "It helps build trust for business owners researching us" },
+  };
+
+  const config = platformConfig[platform] || platformConfig.google;
+
+  const prompt = `Write a short email asking ${firstName} to leave a ${config.name} review for ReceptFlow.
 They previously rated their experience 4 or 5 stars.
 
 Rules:
 - Subject line: short, grateful
 - Body: 3-4 sentences max
 - Thank them for the positive feedback
-- Ask if they'd mind leaving a quick Google review
-- Include this exact link: ${GOOGLE_REVIEW_URL}
+- Ask if they'd mind leaving a quick ${config.name} review
+- Include this exact link: ${config.url}
+- Mention why it matters: ${config.why}
 - Mention it takes less than 60 seconds
 - Tone: grateful, not pushy
 - Sign off as "Usama, Founder of ReceptFlow"
@@ -180,14 +196,14 @@ Rules:
     return { subject, body };
   } catch (err) {
     return {
-      subject: `Would you leave us a quick review?`,
+      subject: `Would you leave us a quick ${config.name} review?`,
       body: `Hey ${firstName},
 
 Thanks for the kind feedback on ReceptFlow — really means a lot.
 
-If you have 60 seconds, would you mind leaving a quick Google review? It helps other business owners find us.
+If you have 60 seconds, would you mind leaving a quick ${config.name} review? ${config.why}.
 
-${GOOGLE_REVIEW_URL}
+${config.url}
 
 No pressure at all — appreciate you either way.
 
@@ -307,8 +323,20 @@ async function handleReviewReply(email, name, ratingText) {
   const user = { name, email };
 
   if (rating >= 4) {
-    // Happy user → send Google Review request
-    const reviewEmail = await generateReviewRequestEmail(user);
+    // Happy user → send review request, rotating platforms
+    // Rotation: Google first (most important for local SEO), then G2, then Trustpilot
+    const platforms = ["google", "g2", "trustpilot"];
+    let existingReviewCount = 0;
+    try {
+      const rows = await readRows(REVIEW_TAB);
+      existingReviewCount = rows.filter(
+        (r) => (r[4] || "").includes("review_request_sent")
+      ).length;
+    } catch { /* ignore */ }
+    const platform = platforms[existingReviewCount % platforms.length];
+
+    const reviewEmail = await generateReviewRequestEmail(user, platform);
+    const platformUrls = { google: GOOGLE_REVIEW_URL, g2: G2_REVIEW_URL, trustpilot: TRUSTPILOT_REVIEW_URL };
     try {
       await sendEmail(email, reviewEmail.subject, reviewEmail.body);
       await appendRow(REVIEW_TAB, [
@@ -316,10 +344,10 @@ async function handleReviewReply(email, name, ratingText) {
         email,
         name,
         rating.toString(),
-        "review_request_sent",
-        GOOGLE_REVIEW_URL,
+        `review_request_sent_${platform}`,
+        platformUrls[platform],
       ]);
-      log(`Review request sent to ${name} (rating: ${rating})`);
+      log(`${platform} review request sent to ${name} (rating: ${rating})`);
     } catch (err) {
       log(`Review request email failed: ${err.message}`);
     }

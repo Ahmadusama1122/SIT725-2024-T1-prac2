@@ -115,6 +115,32 @@ const KEYWORDS = [
   "cost of missed calls for Australian businesses",
   "how to get more Google reviews for your business",
   "local SEO tips for small business Australia 2026",
+
+  // ===== COMPETITOR COMPARISON PAGES =====
+
+  // --- "Alternative to" pages (high buyer intent) ---
+  "Smith.ai alternative for small business",
+  "OfficeHQ alternative Australia",
+  "Ruby Receptionist alternative Australia",
+  "Hey Jodie alternative AI receptionist",
+  "Goodcall alternative AI phone answering",
+  "My AI Front Desk alternative",
+
+  // --- "vs" comparison pages ---
+  "ReceptFlow vs Smith.ai comparison",
+  "ReceptFlow vs Hey Jodie AI receptionist",
+  "ReceptFlow vs OfficeHQ virtual receptionist",
+  "ReceptFlow vs TransferToAI comparison",
+  "ReceptFlow vs Rosie AI receptionist",
+  "ReceptFlow vs Dialzara comparison",
+  "AI receptionist vs human receptionist cost Australia",
+  "AI receptionist vs virtual receptionist service Australia",
+
+  // --- "Best" listicle pages ---
+  "best AI receptionist for dentists Australia 2026",
+  "best AI receptionist for tradies Australia 2026",
+  "best virtual receptionist for law firms Australia 2026",
+  "top AI phone answering services Australia 2026",
 ];
 
 // ---------------------------------------------------------------------------
@@ -262,6 +288,15 @@ const INTERNAL_LINKS = [
 ];
 
 async function generateArticle(keyword) {
+  // Detect if keyword is a competitor comparison page
+  const competitorNames = ["Smith.ai", "Hey Jodie", "OfficeHQ", "Ruby Receptionist", "Goodcall", "My AI Front Desk", "TransferToAI", "Rosie", "Dialzara", "Phonely"];
+  const isCompetitorPage = keyword.toLowerCase().includes("alternative") || keyword.toLowerCase().includes(" vs ") || competitorNames.some((c) => keyword.toLowerCase().includes(c.toLowerCase()));
+  const isBestListicle = keyword.toLowerCase().includes("best ") || keyword.toLowerCase().includes("top ");
+
+  if (isCompetitorPage || isBestListicle) {
+    return await generateCompetitorArticle(keyword, isCompetitorPage);
+  }
+
   // Detect if keyword is city-specific
   const cityNames = ["Melbourne", "Sydney", "Brisbane", "Perth", "Adelaide", "Gold Coast", "Auckland", "Wellington"];
   const detectedCity = cityNames.find((c) => keyword.toLowerCase().includes(c.toLowerCase()));
@@ -319,6 +354,105 @@ ${relatedLinks}
 Brand voice: helpful, direct, conversational. Write like you're explaining to a mate who owns a small business — not like a marketing brochure. No fluff, no filler.
 Include at least 2 specific dollar amounts or statistics to build credibility.
 Format: markdown. Do NOT include frontmatter — just the article starting with the H1.`;
+
+  return await callClaude(systemPrompt, `Write the blog post now for keyword: "${keyword}"`, 5000);
+}
+
+// ---------------------------------------------------------------------------
+// Step 2b — Generate competitor / listicle article
+// ---------------------------------------------------------------------------
+async function generateCompetitorArticle(keyword, isCompetitorPage) {
+  const slug = slugify(keyword);
+
+  // Pick 2-3 internal links for cross-linking
+  const relatedLinks = INTERNAL_LINKS
+    .filter((l) => l.slug !== slug)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3)
+    .map((l) => {
+      const base = l.isMatrix
+        ? `- [${l.title}](https://www.receptflow.com/${l.slug})`
+        : `- [${l.title}](https://www.receptflow.com/blog/${l.slug})`;
+      return base;
+    })
+    .join("\n");
+
+  let systemPrompt;
+
+  if (isCompetitorPage) {
+    // "Alternative to X" or "ReceptFlow vs X" page
+    systemPrompt = `You are an expert SEO content writer for ReceptFlow — an AI receptionist for small businesses in Australia and New Zealand that answers calls 24/7, qualifies leads, and books appointments into Google Calendar.
+
+Write a 1,800-2,000 word SEO comparison blog post targeting this keyword: "${keyword}"
+
+IMPORTANT GUIDELINES FOR COMPETITOR COMPARISON CONTENT:
+- Be honest and fair. Never trash-talk competitors. Acknowledge what they do well.
+- Present factual differences: pricing, features, target market, availability in Australia/NZ
+- Position ReceptFlow's strengths naturally: AU/NZ focus, 24/7 AI call handling, Google Calendar integration, 7-day free trial, no lock-in contracts, live in 15 minutes
+- If the keyword is "alternative to [X]", explain why someone might look for an alternative (price, features, region) and position ReceptFlow as a strong option
+- If the keyword is "[X] vs ReceptFlow", create a fair side-by-side comparison table in markdown
+- Use Australian spelling throughout (recognise, organisation, colour, etc.)
+
+ReceptFlow key facts for comparison:
+- AI receptionist that answers calls 24/7 in natural voice
+- Qualifies leads with custom questions
+- Books appointments directly into Google Calendar
+- Transfers urgent calls to mobile
+- Sends instant SMS/email notifications for every call
+- 7-day free trial, no credit card required
+- Setup takes ~15 minutes
+- Built specifically for Australian & NZ small businesses
+- Pricing: affordable per-month subscription (no per-minute charges)
+
+Structure:
+- H1: compelling title including the keyword (under 60 characters)
+- Introduction (150 words): why someone is searching this comparison, empathise with their decision
+- Comparison table (if "vs" keyword): side-by-side feature/pricing/pros/cons table in markdown
+- 4-5 H2 sections covering: key differences, pricing comparison, feature comparison, who each is best for, verdict
+- FAQ section: 4-5 questions people actually search about this comparison
+- Internal links: naturally link to 2-3 of these related articles:
+${relatedLinks}
+- CTA: "Try ReceptFlow free for 7 days — no credit card required. Live in 15 minutes at receptflow.com"
+
+Brand voice: helpful, direct, honest. Write like you're giving genuine advice to a mate choosing between options — not a sales pitch. Acknowledge competitor strengths where they exist.`;
+  } else {
+    // "Best X" listicle page
+    systemPrompt = `You are an expert SEO content writer for ReceptFlow — an AI receptionist for small businesses in Australia and New Zealand that answers calls 24/7, qualifies leads, and books appointments into Google Calendar.
+
+Write a 1,800-2,000 word SEO listicle blog post targeting this keyword: "${keyword}"
+
+IMPORTANT GUIDELINES FOR "BEST OF" LISTICLE CONTENT:
+- List 5-7 options (including ReceptFlow) — position ReceptFlow as #1 or #2 but be genuinely helpful
+- For each option include: brief description, key features, pricing (if publicly available), best for, pros/cons
+- Be honest about each option's strengths and weaknesses
+- Include a mix of AI receptionists, virtual receptionist services, and hybrid solutions relevant to the keyword
+- Use Australian spelling throughout (recognise, organisation, colour, etc.)
+
+Options to potentially include (pick the most relevant 5-7 for this keyword):
+1. ReceptFlow — AI receptionist built for AU/NZ small businesses, 24/7 call handling, Google Calendar booking, 7-day free trial, live in 15 minutes
+2. Smith.ai — US-based, human + AI hybrid, higher price point, strong features but US-focused
+3. Ruby Receptionist — US virtual receptionist service, human operators, premium pricing
+4. OfficeHQ — Australian virtual receptionist, human operators, per-minute billing
+5. Hey Jodie — Australian AI receptionist, newer entrant
+6. Goodcall — US AI phone agent, restaurant/retail focus
+7. My AI Front Desk — US AI receptionist, affordable, basic features
+8. Dialzara — Australian AI answering service
+9. Rosie — US AI phone answering
+10. TransferToAI — AI call handling platform
+
+Structure:
+- H1: compelling listicle title including the keyword (under 60 characters)
+- Introduction (150 words): why this roundup matters, what criteria you used to evaluate
+- Quick comparison table: name, best for, pricing tier, AU/NZ availability
+- Individual reviews (200-250 words each): description, features, pricing, pros, cons, verdict
+- How to choose section: decision criteria based on business type, budget, needs
+- FAQ section: 4-5 practical questions
+- Internal links: naturally link to 2-3 of these:
+${relatedLinks}
+- CTA: "Try ReceptFlow free for 7 days — no credit card required"
+
+Brand voice: helpful, objective, trustworthy. Write like a genuine review — readers should feel they got honest advice, not a sales page.`;
+  }
 
   return await callClaude(systemPrompt, `Write the blog post now for keyword: "${keyword}"`, 5000);
 }
@@ -383,8 +517,9 @@ async function generateSEO() {
   const articleTitle = h1Match ? h1Match[1].trim() : toTitleCase(keyword);
 
   // Categorise based on keyword content
-  const category = keyword.match(/vs |comparison|versus/i) ? "Comparisons"
-    : keyword.match(/how to|how much|best|guide/i) ? "Guides"
+  const category = keyword.match(/vs |comparison|versus|alternative/i) ? "Comparisons"
+    : keyword.match(/best |top /i) ? "Reviews"
+    : keyword.match(/how to|how much|guide/i) ? "Guides"
     : keyword.match(/dental|law|physio|trade|real estate|vet|beauty|medical|accounting/i) ? "Industry Insights"
     : "SEO";
 
