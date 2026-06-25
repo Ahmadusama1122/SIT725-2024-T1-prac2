@@ -942,6 +942,150 @@ function generateTrackingId() {
 }
 
 // ---------------------------------------------------------------------------
+// Engagement Actions — warm-up before connection request
+// ---------------------------------------------------------------------------
+
+/**
+ * Follow a prospect's LinkedIn profile.
+ * @param {string} linkedinUrl — full LinkedIn profile URL
+ * @returns {{ success: boolean, error?: string }}
+ */
+async function followProfile(linkedinUrl) {
+  if (!canPerformAction("engagement")) return { success: false, error: "Daily action limit reached" };
+
+  const vanityName = extractVanityName(linkedinUrl);
+  if (!vanityName) return { success: false, error: `Invalid LinkedIn URL: ${linkedinUrl}` };
+
+  try {
+    log(`Visiting profile to follow: /in/${vanityName}/`);
+    await _page.goto(`https://www.linkedin.com/in/${vanityName}/`, {
+      waitUntil: "domcontentloaded",
+      timeout: 20000,
+    });
+    await _page.waitForTimeout(2000 + Math.random() * 2000);
+
+    const pageUrl = _page.url();
+    if (pageUrl.includes("/login") || pageUrl.includes("/authwall")) {
+      return { success: false, error: `Redirected to login` };
+    }
+
+    // Look for Follow button
+    let followBtn = await _page.$('button[aria-label*="Follow" i]');
+    if (!followBtn) {
+      const buttons = await _page.$$("button");
+      for (const btn of buttons) {
+        const text = await btn.textContent().catch(() => "");
+        if (text.trim().toLowerCase() === "follow") {
+          followBtn = btn;
+          break;
+        }
+      }
+    }
+
+    // Check "More" dropdown for Follow
+    if (!followBtn) {
+      const moreBtn = await _page.$('button[aria-label*="More actions" i], button[aria-label*="More" i]');
+      if (moreBtn) {
+        await moreBtn.click({ force: true });
+        await _page.waitForTimeout(1000);
+        const menuItems = await _page.$$('[role="menuitem"], [role="option"]');
+        for (const item of menuItems) {
+          const text = await item.textContent().catch(() => "");
+          if (text.toLowerCase().includes("follow")) {
+            followBtn = item;
+            break;
+          }
+        }
+      }
+    }
+
+    if (followBtn) {
+      await followBtn.click({ force: true });
+      await _page.waitForTimeout(1500 + Math.random() * 1000);
+      recordAction("engagement");
+      log(`Followed ${vanityName}`);
+    } else {
+      // Already following or button not found — not a failure
+      log(`Follow button not found for ${vanityName} (may already be following)`);
+    }
+
+    // Navigate back to feed
+    await _page.goto("https://www.linkedin.com/feed/", {
+      waitUntil: "domcontentloaded", timeout: 15000,
+    }).catch(() => {});
+
+    return { success: true };
+  } catch (err) {
+    try { await _page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 15000 }); } catch (_) {}
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Like a prospect's most recent LinkedIn post.
+ * @param {string} linkedinUrl — full LinkedIn profile URL
+ * @returns {{ success: boolean, error?: string }}
+ */
+async function likeRecentPost(linkedinUrl) {
+  if (!canPerformAction("engagement")) return { success: false, error: "Daily action limit reached" };
+
+  const vanityName = extractVanityName(linkedinUrl);
+  if (!vanityName) return { success: false, error: `Invalid LinkedIn URL: ${linkedinUrl}` };
+
+  try {
+    // Navigate to the prospect's recent activity
+    log(`Visiting activity for: /in/${vanityName}/recent-activity/all/`);
+    await _page.goto(`https://www.linkedin.com/in/${vanityName}/recent-activity/all/`, {
+      waitUntil: "domcontentloaded",
+      timeout: 20000,
+    });
+    await _page.waitForTimeout(3000 + Math.random() * 2000);
+
+    const pageUrl = _page.url();
+    if (pageUrl.includes("/login") || pageUrl.includes("/authwall")) {
+      return { success: false, error: `Redirected to login` };
+    }
+
+    // Find the first Like button that hasn't been liked yet
+    const likeResult = await _page.evaluate(() => {
+      // Look for like buttons on posts
+      const likeButtons = document.querySelectorAll('button[aria-label*="Like"]');
+      for (const btn of likeButtons) {
+        const label = btn.getAttribute("aria-label") || "";
+        // Skip if already liked (aria-pressed="true" or label says "Unlike")
+        if (btn.getAttribute("aria-pressed") === "true") continue;
+        if (label.toLowerCase().includes("unlike")) continue;
+        return { found: true, label };
+      }
+      return { found: false };
+    });
+
+    if (likeResult.found) {
+      // Click the first unliked Like button
+      const likeBtn = await _page.$('button[aria-label*="Like"]:not([aria-pressed="true"])');
+      if (likeBtn) {
+        await likeBtn.click({ force: true });
+        await _page.waitForTimeout(1500 + Math.random() * 1000);
+        recordAction("engagement");
+        log(`Liked a post by ${vanityName}`);
+      }
+    } else {
+      log(`No unliked posts found for ${vanityName} — they may not post often`);
+    }
+
+    // Navigate back to feed
+    await _page.goto("https://www.linkedin.com/feed/", {
+      waitUntil: "domcontentloaded", timeout: 15000,
+    }).catch(() => {});
+
+    return { success: true };
+  } catch (err) {
+    try { await _page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 15000 }); } catch (_) {}
+    return { success: false, error: err.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Business hours check (AEST)
 // ---------------------------------------------------------------------------
 function isBusinessHours() {
@@ -962,6 +1106,8 @@ module.exports = {
   isSessionExpired,
   validateSession,
   warmUp,
+  followProfile,
+  likeRecentPost,
   sendConnectionRequest,
   sendDirectMessage,
   checkConnectionStatus,

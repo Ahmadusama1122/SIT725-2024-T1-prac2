@@ -1,13 +1,24 @@
 const { callClaude } = require("../../shared/pipeline-claude");
 
 // ---------------------------------------------------------------------------
-// LinkedIn DM Sequence — 6 steps (connect + 5 DMs)
+// LinkedIn Sequence — warm-up engagement → connect → 5 DMs
 // ---------------------------------------------------------------------------
 const LINKEDIN_SEQUENCE = [
   {
+    step: "warm_up_follow",
+    trigger: "day_3_no_email_reply",
+    label: "Warm-up — Follow profile",
+  },
+  {
+    step: "warm_up_like",
+    trigger: "day_4_no_email_reply",
+    label: "Warm-up — Like recent post",
+    daysAfterPrev: 1,
+  },
+  {
     step: "connection_request",
     trigger: "day_6_no_email_reply",
-    label: "Connection request",
+    label: "Connection request (after warm-up)",
   },
   {
     step: "dm_1",
@@ -145,7 +156,9 @@ Rules:
  */
 function getNextStep(currentStatus) {
   const statusToNextStep = {
-    "none": "connection_request",
+    "none": "warm_up_follow",
+    "warm_up_follow": "warm_up_like",
+    "warm_up_like": "connection_request",
     "connection_sent": null, // Wait for acceptance
     "connected": "dm_1",
     "dm_1": "dm_2",

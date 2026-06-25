@@ -46,7 +46,7 @@ function logError(msg) {
 // ---------------------------------------------------------------------------
 // Trial Users sheet columns:
 //  0: Date  1: Name  2: Email  3: Phone  4: Niche  5: Status
-//  6: Day0Sent  7: Day1Sent  8: Day3Sent  9: Day5Sent  10: Day6Sent
+//  6: Day0Sent  7: Day1Sent  8: Day3Sent  9: Day5Sent  10: Day6Sent  11: ReferralSent
 // ---------------------------------------------------------------------------
 const EMAIL_SCHEDULE = [
   { day: 0, label: "Day 0 (Welcome)", colIndex: 6, colLetter: "G", subject: "Welcome to ReceptFlow — get started in 60 seconds" },
@@ -55,6 +55,12 @@ const EMAIL_SCHEDULE = [
   { day: 5, label: "Day 5 (Social Proof)", colIndex: 9, colLetter: "J", subject: "Here's what {{niche}} businesses achieved with ReceptFlow" },
   { day: 6, label: "Day 6 (Urgency)", colIndex: 10, colLetter: "K", subject: "Your trial ends tomorrow — here's what you'll lose" },
 ];
+
+// Referral email — sent to converted users 10 days after signup
+const REFERRAL_EMAIL = {
+  day: 10, label: "Day 10 (Referral)", colIndex: 11, colLetter: "L",
+  subject: "Know a {{niche}} business that's missing calls? You'll both get a free month",
+};
 
 // ---------------------------------------------------------------------------
 // Day calculation
@@ -161,6 +167,24 @@ Rules:
 - No sign-off needed
 
 Output ONLY the email body text.`,
+
+    referral: `You are writing a referral request email for ReceptFlow.
+The user is a paying customer who converted from a free trial. Now ask them to refer a friend.
+
+Their name: ${firstName}
+Their business type: ${nicheLabel}
+
+Rules:
+- Open by acknowledging they're a customer: "You've been using ReceptFlow for a bit now"
+- Ask a simple question: "Do you know another ${nicheLabel} business owner who's missing calls after hours?"
+- Explain the referral offer: "Refer them and you BOTH get a free month"
+- Make it dead simple: "Just reply with their name and email, and I'll reach out personally"
+- Keep it SHORT — 60-80 words max
+- Conversational, casual, first person as Usama (founder)
+- Australian English
+- No sign-off needed
+
+Output ONLY the email body text.`,
   };
 
   return prompts[templateKey] || prompts.day0;
@@ -184,6 +208,9 @@ const FALLBACK_EMAILS = {
 
   day6: (firstName) =>
     `Hi ${firstName},\n\nYour ReceptFlow trial ends tomorrow.\n\nAfter that, calls outside business hours go back to voicemail. Enquiries at midnight go unanswered. Leads go to your competitors.\n\nKeep your AI receptionist — plans start at just $49/month, no lock-in: www.receptflow.com/register`,
+
+  referral: (firstName) =>
+    `Hi ${firstName},\n\nYou've been using ReceptFlow for a bit now — hope it's been catching those after-hours calls for you.\n\nQuick question: do you know another business owner who's still losing calls to voicemail?\n\nRefer them and you both get a free month. Just reply with their name and email, and I'll reach out personally.\n\nSimple as that.`,
 };
 
 // ---------------------------------------------------------------------------
@@ -231,9 +258,65 @@ async function runOnboardingSequence() {
 
     if (!email) continue;
 
-    // Skip converted or churned users
-    if (status === "converted" || status === "churned") {
+    // Skip churned users entirely
+    if (status === "churned") {
       if (TEST_MODE) console.log(`  SKIP ${name || email} — status: ${status}`);
+      continue;
+    }
+
+    // Converted users only get the referral email
+    if (status === "converted") {
+      const referralSent = (row[REFERRAL_EMAIL.colIndex] || "").trim().toLowerCase() === "yes";
+      if (referralSent || days < REFERRAL_EMAIL.day) {
+        if (TEST_MODE) console.log(`  SKIP ${name || email} — converted, referral ${referralSent ? "already sent" : "not due yet"}`);
+        continue;
+      }
+
+      // Send referral email
+      const subject = REFERRAL_EMAIL.subject.replace("{{niche}}", niche || "small");
+      if (TEST_MODE) {
+        console.log(`\n  ${name} <${email}> [${niche}] — ${REFERRAL_EMAIL.label} (converted, ${days} days since signup)`);
+        console.log(`    Subject: ${subject}`);
+        console.log(`    WOULD SEND referral email`);
+        emailLog.push({ name, email, label: REFERRAL_EMAIL.label });
+        continue;
+      }
+
+      let body;
+      try {
+        body = await callClaude(
+          getOnboardingPrompt("referral", niche, firstName),
+          `Write the referral request email for ${firstName} who runs a ${niche || "small"} business and has converted to a paying customer.`,
+          300
+        );
+        log(`Generated referral email for ${email} (${body.length} chars)`);
+      } catch (err) {
+        logError(`Claude failed for referral ${email}: ${err.message}`);
+        body = FALLBACK_EMAILS.referral(firstName);
+      }
+
+      if (!body.toLowerCase().startsWith("hi ")) {
+        body = `Hi ${firstName},\n\n${body}`;
+      }
+
+      try {
+        await sendEmail(email, subject, body);
+        emailsSent++;
+        log(`Referral email sent to ${email} (${name})`);
+        emailLog.push({ name, email, label: REFERRAL_EMAIL.label });
+
+        try {
+          await updateCells(TRIAL_USERS_TAB, `${REFERRAL_EMAIL.colLetter}${rowIndex}`, ["Yes"]);
+        } catch (err) {
+          logError(`Sheet tracking update failed for referral ${email}: ${err.message}`);
+        }
+
+        await new Promise((r) => setTimeout(r, 10000));
+      } catch (err) {
+        emailsFailed++;
+        logError(`Referral email send failed for ${email}: ${err.message}`);
+      }
+
       continue;
     }
 

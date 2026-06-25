@@ -193,8 +193,8 @@ async function runLinkedInOutreach() {
     if (respondents.has(p.email)) return false;
     // Skip if LinkedIn sequence is complete or stopped
     if (["replied", "stopped", "not_found", "connection_expired", "dm_5"].includes(p.linkedinStatus)) return false;
-    // Must be at least 6 days since initial email (for connection request)
-    if (p.linkedinStatus === "none" && daysBetween(p.sentAt) < 6) return false;
+    // Must be at least 3 days since initial email (for warm-up follow)
+    if (p.linkedinStatus === "none" && daysBetween(p.sentAt) < 3) return false;
     return true;
   });
 
@@ -275,7 +275,51 @@ async function runLinkedInOutreach() {
 
     // Execute the action
     let result;
-    if (actionStep.step === "connection_request") {
+    if (actionStep.step === "warm_up_follow") {
+      if (TEST_MODE) {
+        console.logger.info(`    WOULD FOLLOW profile`);
+        result = { success: true };
+      } else {
+        result = await linkedin.followProfile(p.linkedinProfile);
+      }
+
+      if (result.success) {
+        try {
+          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, [
+            "warm_up_follow",  // linkedin_status
+            today,              // linkedin_last_action
+          ]);
+        } catch (err) {
+          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
+        }
+        actionsPerformed++;
+      } else {
+        logger.error(`Follow failed for ${p.name}: ${result.error}`);
+        errors++;
+      }
+    } else if (actionStep.step === "warm_up_like") {
+      if (TEST_MODE) {
+        console.logger.info(`    WOULD LIKE recent post`);
+        result = { success: true };
+      } else {
+        result = await linkedin.likeRecentPost(p.linkedinProfile);
+      }
+
+      if (result.success) {
+        try {
+          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, [
+            "warm_up_like",    // linkedin_status
+            today,              // linkedin_last_action
+          ]);
+        } catch (err) {
+          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
+        }
+        actionsPerformed++;
+      } else {
+        logger.error(`Like failed for ${p.name}: ${result.error}`);
+        errors++;
+      }
+    } else if (actionStep.step === "connection_request") {
       const note = await generateConnectionNote({
         name: p.name, company: p.company, niche: p.niche, city: p.city, country: p.country,
       });
