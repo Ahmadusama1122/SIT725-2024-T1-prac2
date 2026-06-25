@@ -20,7 +20,7 @@ const LOG_DIR = path.join(__dirname, "../../logs");
 // Alert cooldown — only send each alert type once per 6 hours
 // Persisted to disk so cooldowns survive process restarts / Railway redeploys
 // ---------------------------------------------------------------------------
-const ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 const COOLDOWN_FILE = path.join(__dirname, "../../logs/guardian-cooldowns.json");
 
 function loadCooldowns() {
@@ -390,23 +390,22 @@ async function checkSendingAnomalies() {
     const todaySends =
       (dailyCounts[utcToday] || 0) + (dailyCounts[utcYesterday] || 0);
 
-    if (todaySends < avgDaily * 0.5 && avgDaily > 10) {
+    if (todaySends === 0 && avgDaily > 10) {
+      // Only alert when ZERO emails sent — not just below average.
+      // Volume reductions are intentional (schedule changes, cost optimization).
       logger.info(
-        `[ANOMALY] Sending volume significantly below average -- ` +
-          `today: ${todaySends}, avg: ${Math.round(avgDaily)}`
+        `[ANOMALY] Zero emails sent today -- avg: ${Math.round(avgDaily)}`
       );
 
-      // Alert only — do NOT re-trigger prospect finder (it has its own schedule
-      // and daily cap). Re-triggering was causing 160+ emails per hour.
       if (canSendAlert("sending-anomaly")) {
         await sendAlert(
           "MEDIUM",
-          "Sending volume below average",
-          `Today's sends: ${todaySends}, 7-day average: ${Math.round(avgDaily)}.\n\nThis is ${Math.round((1 - todaySends / avgDaily) * 100)}% below the average.`,
+          "Zero emails sent today",
+          `No emails have been sent today. 7-day average: ${Math.round(avgDaily)}.\n\nCheck if the prospect finder ran successfully.`,
           "Alert sent. The prospect finder will run on its next scheduled time. Check logs if this persists."
         ).catch(() => {});
       } else {
-        logger.info(`[ANOMALY] Alert suppressed (cooldown active — already sent within 6h)`);
+        logger.info(`[ANOMALY] Alert suppressed (cooldown active)`);
       }
 
       return {
@@ -415,6 +414,12 @@ async function checkSendingAnomalies() {
         avgDaily: Math.round(avgDaily),
         alerted: true,
       };
+    } else if (todaySends < avgDaily * 0.3 && avgDaily > 10) {
+      // Log it but don't email — volume is low but not zero
+      logger.info(
+        `[INFO] Sending volume below average -- today: ${todaySends}, avg: ${Math.round(avgDaily)} (no alert — not zero)`
+      );
+      return { ok: true, todaySends, avgDaily: Math.round(avgDaily), belowAverage: true };
     }
 
     logger.info(
@@ -608,13 +613,13 @@ if (TEST_MODE) {
       process.exit(1);
     });
 } else {
-  logger.info("Guardian started — runs every 30 minutes 24/7");
+  logger.info("Guardian started — runs every 6 hours");
   // Run immediately on startup
   runGuardian().catch((err) => {
     logger.error(`Guardian startup check failed: ${err.message}`);
   });
-  // Then every 30 minutes
-  cron.schedule("*/30 * * * *", () => {
+  // Then every 6 hours
+  cron.schedule("0 */6 * * *", () => {
     runGuardian().catch((err) => {
       logger.error(`Guardian check failed: ${err.message}`);
     });
