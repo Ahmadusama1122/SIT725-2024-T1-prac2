@@ -3,6 +3,7 @@ const { DISCORD_BOT_TOKEN, DISCORD_CHANNELS } = require('./config');
 
 let client = null;
 let ready = false;
+const processedMessages = new Map(); // dedup: messageId → timestamp
 
 async function initDiscord() {
   if (client) return;
@@ -83,6 +84,16 @@ function onCommand(callback) {
     if (message.author.bot) return;
     const commandsChannelId = DISCORD_CHANNELS.commands;
     if (commandsChannelId && message.channel.id === commandsChannelId) {
+      // Dedup: skip if we already processed this message ID
+      if (processedMessages.has(message.id)) {
+        console.log(`[Discord] Skipping duplicate message ${message.id}`);
+        return;
+      }
+      processedMessages.set(message.id, Date.now());
+      // Clean up old entries (keep last 5 minutes)
+      for (const [id, ts] of processedMessages) {
+        if (Date.now() - ts > 5 * 60 * 1000) processedMessages.delete(id);
+      }
       callback(message.content, message);
     }
   });
