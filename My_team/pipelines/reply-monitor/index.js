@@ -1167,7 +1167,7 @@ if (FILTER_TEST_MODE) {
   const monitoredInboxes = [config.gmailUserEmail];
   if (config.gmailUserEmail2 && config.gmailRefreshToken2) monitoredInboxes.push(config.gmailUserEmail2);
   if (config.gmailUserEmail3 && config.gmailRefreshToken3) monitoredInboxes.push(config.gmailUserEmail3);
-  logger.info(`Reply Monitor started — checking ${monitoredInboxes.join(" + ")} every 5 minutes`);
+  logger.info(`Reply Monitor started — checking ${monitoredInboxes.join(" + ")} every 6 hours`);
   checkEmails();
-  cron.schedule("*/5 * * * *", checkEmails);
+  cron.schedule("0 */6 * * *", checkEmails);
 }
