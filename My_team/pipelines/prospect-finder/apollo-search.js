@@ -106,75 +106,61 @@ async function searchApollo(niche, contactedEmails, locations, targetFresh, logg
       for (const c of candidates) {
         if (prospects.length >= targetFresh) break;
 
-        const preCompanyName = c.organization?.name || "";
-        const preEmployeeCount = c.organization?.estimated_num_employees || 0;
-        const preWebsite = c.organization?.website_url || "";
+        const companyName = c.organization?.name || "";
+        const employeeCount = c.organization?.estimated_num_employees || 0;
+        const websiteUrl = c.organization?.website_url || "";
 
-        if (preEmployeeCount > 10) {
-          if (testMode) console.log(`  PRE-FILTER: ${preCompanyName} (${preEmployeeCount} employees — over 10 limit)`);
+        if (employeeCount > 10) {
+          if (testMode) console.log(`  PRE-FILTER: ${companyName} (${employeeCount} employees — over 10 limit)`);
           continue;
         }
 
-        const preNameLower = preCompanyName.toLowerCase();
-        if (CHAIN_INDICATORS.some((w) => preNameLower.includes(w))) {
-          if (testMode) console.log(`  PRE-FILTER chain: ${preCompanyName}`);
+        const nameLower = companyName.toLowerCase();
+        if (CHAIN_INDICATORS.some((w) => nameLower.includes(w))) {
+          if (testMode) console.log(`  PRE-FILTER chain: ${companyName}`);
           continue;
         }
 
         // No website = quality score penalty (not a hard reject).
-        // Apollo data for AU small businesses often lacks website info.
-        if (!preWebsite) filteredNoWebsite++;
+        if (!websiteUrl) filteredNoWebsite++;
 
-        try {
-          if (callBudget.used >= callBudget.max) break;
-          const enrichRes = await axios.post(
-            `${APOLLO_BASE}/people/match`,
-            { id: c.id },
-            { headers }
-          );
-          callBudget.used++;
-          const p = enrichRes.data.person;
-          if (p && p.email) {
-            if (contactedEmails.has(p.email.toLowerCase())) {
-              if (testMode) console.log(`  SKIP already contacted: ${p.email}`);
-              continue;
-            }
+        // Use search data directly — no enrichment call needed (saves 1 credit per prospect)
+        const email = c.email || "";
+        if (!email) continue;
 
-            const companyName = p.organization?.name || preCompanyName;
-            const employeeCount = p.organization?.estimated_num_employees || preEmployeeCount;
-            const linkedinUrl = p.linkedin_url || "";
-            const websiteUrl = p.organization?.website_url || preWebsite;
-            const emailStatus = p.email_status || c.email_status || "";
-
-            const prospect = {
-              first_name: p.first_name || "",
-              name: [p.first_name, p.last_name].filter(Boolean).join(" "),
-              email: p.email,
-              company: companyName,
-              city: p.city || p.organization?.city || "",
-              title: p.title || "",
-              linkedinUrl,
-              websiteUrl,
-              emailStatus,
-              employeeCount,
-            };
-
-            const score = calculateQualityScore(prospect);
-            prospect.qualityScore = score;
-
-            if (score < 6) {
-              if (testMode) console.log(`  FILTERED low quality [${score}/10]: ${prospect.name} at ${companyName}`);
-              filteredLowQuality++;
-              continue;
-            }
-
-            if (testMode) console.log(`  [${score}/10] ${prospect.name} at ${companyName} (${employeeCount} emp, ${emailStatus})`);
-
-            prospects.push(prospect);
-          }
-        } catch (err) {
-          logger.error(`Enrich failed for ${c.first_name} (${c.id}): ${err.message}`);
+        if (contactedEmails.has(email.toLowerCase())) {
+          if (testMode) console.log(`  SKIP already contacted: ${email}`);
+          continue;
         }
+
+        const linkedinUrl = c.linkedin_url || "";
+        const emailStatus = c.email_status || "";
+
+        const prospect = {
+          first_name: c.first_name || "",
+          name: [c.first_name, c.last_name].filter(Boolean).join(" "),
+          email,
+          company: companyName,
+          city: c.city || c.organization?.city || "",
+          title: c.title || "",
+          linkedinUrl,
+          websiteUrl,
+          emailStatus,
+          employeeCount,
+        };
+
+        const score = calculateQualityScore(prospect);
+        prospect.qualityScore = score;
+
+        if (score < 6) {
+          if (testMode) console.log(`  FILTERED low quality [${score}/10]: ${prospect.name} at ${companyName}`);
+          filteredLowQuality++;
+          continue;
+        }
+
+        if (testMode) console.log(`  [${score}/10] ${prospect.name} at ${companyName} (${employeeCount} emp, ${emailStatus})`);
+
+        prospects.push(prospect);
       }
 
       page++;
@@ -187,8 +173,9 @@ async function searchApollo(niche, contactedEmails, locations, targetFresh, logg
 }
 
 // Max API calls per niche — prevents one niche from burning the quota for all others.
-// 4 niches share the Apollo rate limit, so each gets a fair slice.
-const MAX_CALLS_PER_NICHE = 30;
+// 6 niches share the Apollo rate limit, so each gets a fair slice.
+// With enrichment removed, each search page = 1 credit (was 1 + 1 per prospect before).
+const MAX_CALLS_PER_NICHE = 15;
 
 async function searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, testMode) {
   const { targets, primaryCity, country } = targeting;
