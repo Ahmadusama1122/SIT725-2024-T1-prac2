@@ -2,57 +2,38 @@ const cron = require("node-cron");
 const createLogger = require("../../shared/pipeline-logger");
 const { ALERT_EMAIL, SHEETS } = require("../../shared/pipeline-constants");
 const { sendEmail } = require("../../shared/pipeline-gmail");
-const { readRows, updateCells, appendRow } = require("../../shared/pipeline-sheets");
+const { readRows, updateCells } = require("../../shared/pipeline-sheets");
 const { callClaude } = require("../../shared/pipeline-claude");
-const config = require("../../shared/pipeline-config");
-const linkedin = require("../../shared/pipeline-linkedin-auto");
 const {
   generateConnectionNote,
   generateDM,
   getNextStep,
   isDMDue,
 } = require("./sequence");
+const {
+  launchBrowser,
+  closeBrowser,
+  validateSession,
+  warmUp,
+  sendConnectionRequest,
+  sendDirectMessage,
+  randomDelay,
+  isBusinessHours,
+  resetDailyCounts,
+  getRateLimitStatus,
+} = require("../../shared/pipeline-linkedin-auto");
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const TEST_MODE = process.argv.includes("--test");
 const logger = createLogger("linkedin-outreach");
 
 const PROSPECT_TAB = SHEETS.PROSPECTS;
 const REPLY_TAB = SHEETS.REPLIES;
 
-// Alert cooldown — only send "session expired" alert once per 6 hours
-// Persisted to disk so cooldowns survive process restarts / Railway redeploys
-const fs = require("fs");
-const path = require("path");
-const ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-const COOLDOWN_FILE = path.join(__dirname, "../../logs/linkedin-outreach-cooldowns.json");
-
-function loadCooldowns() {
-  try {
-    if (fs.existsSync(COOLDOWN_FILE)) {
-      return JSON.parse(fs.readFileSync(COOLDOWN_FILE, "utf-8"));
-    }
-  } catch (err) {}
-  return {};
-}
-
-function saveCooldowns(data) {
-  try {
-    fs.writeFileSync(COOLDOWN_FILE, JSON.stringify(data));
-  } catch (err) {}
-}
-
-function canSendAlert(key) {
-  const cooldowns = loadCooldowns();
-  const last = cooldowns[key] || 0;
-  if (Date.now() - last < ALERT_COOLDOWN_MS) return false;
-  cooldowns[key] = Date.now();
-  saveCooldowns(cooldowns);
-  return true;
-}
-
+// Max messages per daily batch
+const MAX_CONNECTIONS_PER_BATCH = 30;
+const MAX_DMS_PER_BATCH = 20;
 
 function daysBetween(dateStr) {
   const d = new Date(dateStr);
@@ -87,63 +68,49 @@ async function loadRespondents() {
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Generate hyper-personalized icebreaker
 // ---------------------------------------------------------------------------
-async function runLinkedInOutreach() {
-  if (TEST_MODE) console.logger.info("=== LinkedIn Outreach — TEST MODE ===\n");
+async function generateIcebreaker(prospect) {
+  const firstName = prospect.name.split(" ")[0];
+  const country = prospect.country || "Australia";
 
-  // Check business hours (--force skips this check for manual testing)
-  const FORCE_MODE = process.argv.includes("--force");
-  if (!linkedin.isBusinessHours() && !TEST_MODE && !FORCE_MODE) {
-    logger.info("Outside business hours (8am-6pm AEST, weekdays only) — skipping");
-    return;
+  const prompt = `You are a helpful sales assistant. Write a LinkedIn connection request note.
+
+Target person:
+- Name: ${prospect.name}
+- Company: ${prospect.company}
+- Role/Title: ${prospect.title || "Owner"}
+- Industry: ${prospect.niche}
+- Location: ${prospect.city}, ${country}
+
+Rules:
+- Max 200 characters (LinkedIn limit for connection notes is 300, keep it short)
+- Use this template: "Hey [first name], love seeing [specific thing about their company/role]. [Plausible tie-in about shared interest]. Would love to connect."
+- Never use the raw data fields directly — always paraphrase naturally
+- Sound like a real human, not a bot
+- Do NOT pitch anything. Do NOT mention ReceptFlow or AI receptionist
+- Be specific to THEIR business, not generic
+- Do NOT use quotation marks around the output
+
+Example:
+Input: Sarah Chen, Bright Smile Dental, Dentist, Melbourne
+Output: Hey Sarah, love seeing Bright Smile growing in Melbourne — always great connecting with dental practice owners. Cheers!`;
+
+  try {
+    const raw = await callClaude(prompt, `Write the connection note for ${prospect.name} now.`, 100);
+    return raw.trim().replace(/^["']|["']$/g, "").slice(0, 300);
+  } catch (err) {
+    return `Hey ${firstName}, noticed ${prospect.company} in ${prospect.city} — always good connecting with ${prospect.niche} business owners. Cheers!`;
   }
+}
 
-  // Check LinkedIn cookies configured
-  if (!config.linkedinCookies) {
-    logger.info("LINKEDIN_COOKIES not set — skipping LinkedIn outreach");
-    return;
-  }
+// ---------------------------------------------------------------------------
+// Main — Generate daily batch and email
+// ---------------------------------------------------------------------------
+async function runLinkedInBatch() {
+  logger.info("LinkedIn daily batch starting...");
 
-  // Reset daily counts
-  linkedin.resetDailyCounts();
-
-  // Validate session — retry up to 2 times with a pause between attempts
-  logger.info("Validating LinkedIn session...");
-  let sessionValid = false;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    sessionValid = await linkedin.validateSession();
-    if (sessionValid) break;
-    if (attempt < 2) {
-      logger.info(`Session validation attempt ${attempt} failed — retrying after delay...`);
-      await linkedin.closeBrowser();
-      await new Promise((r) => setTimeout(r, 10000)); // 10s pause before retry
-      await linkedin.launchBrowser();
-    }
-  }
-
-  if (!sessionValid) {
-    logger.error("LinkedIn session invalid — cookies expired");
-    // Only send alert email if NOT in test mode and cooldown allows it
-    if (!TEST_MODE && canSendAlert("session-expired")) {
-      try {
-        await sendEmail(
-          ALERT_EMAIL,
-          "LinkedIn session expired — re-export cookies",
-          "Your LinkedIn session cookies have expired. Please:\n1. Log into LinkedIn in your browser\n2. Export cookies using a browser extension\n3. Update LINKEDIN_COOKIES in Railway env vars\n\n— ReceptFlow System"
-        );
-      } catch (err) {
-        logger.error(`Alert email failed: ${err.message}`);
-      }
-    } else if (!TEST_MODE) {
-      logger.info("Session expired alert suppressed (cooldown active — already sent within 6h)");
-    }
-    await linkedin.closeBrowser();
-    return;
-  }
-
-  // Warm up
-  await linkedin.warmUp();
+  const today = new Date().toISOString().slice(0, 10);
 
   // Load prospects
   let prospects;
@@ -154,13 +121,14 @@ async function runLinkedInOutreach() {
     // 8:EmailSent 9:SentAt 10:LastContacted 11:SentVia 12:Country 13:Currency
     // 14:channel 15:linkedin_profile 16:linkedin_status 17:linkedin_last_action 18:engagement_channel
     prospects = rows.slice(1).map((row, idx) => ({
-      rowIndex: idx + 2, // 1-indexed + header = row 2 onwards
+      rowIndex: idx + 2,
       date: (row[0] || "").trim(),
       name: (row[1] || "").trim(),
       company: (row[2] || "").trim(),
       email: (row[3] || "").trim().toLowerCase(),
       city: (row[4] || "").trim(),
       niche: (row[5] || "").trim(),
+      title: (row[6] || "").trim(),
       emailSent: (row[8] || "").trim(),
       sentAt: (row[9] || row[0] || "").trim(),
       country: (row[12] || "Australia").trim(),
@@ -170,349 +138,251 @@ async function runLinkedInOutreach() {
       linkedinLastAction: (row[17] || "").trim(),
       engagementChannel: (row[18] || "none").trim(),
     }));
-    if (TEST_MODE) console.logger.info(`Loaded ${prospects.length} prospect(s) from sheet`);
   } catch (err) {
     logger.error(`Failed to load prospects: ${err.message}`);
-    await linkedin.closeBrowser();
     return;
   }
 
   // Load respondents — skip them
   const respondents = await loadRespondents();
 
-  // Filter prospects eligible for LinkedIn actions
-  const today = new Date().toISOString().slice(0, 10);
-  const eligible = prospects.filter((p) => {
-    // Must have a LinkedIn profile
+  // ---------------------------------------------------------------------------
+  // PART 1: Connection requests (new prospects needing connection)
+  // ---------------------------------------------------------------------------
+  const needConnection = prospects.filter((p) => {
     if (!p.linkedinProfile) return false;
-    // Must have been emailed
     if (p.emailSent !== "Yes") return false;
-    // Skip if already engaged
     if (p.channel === "engaged") return false;
-    // Skip if they replied via email
     if (respondents.has(p.email)) return false;
-    // Skip if LinkedIn sequence is complete or stopped
-    if (["replied", "stopped", "not_found", "connection_expired", "dm_5"].includes(p.linkedinStatus)) return false;
-    // Must be at least 3 days since initial email (for warm-up follow)
-    if (p.linkedinStatus === "none" && daysBetween(p.sentAt) < 3) return false;
+    if (!["none", "warm_up_follow", "warm_up_like"].includes(p.linkedinStatus)) return false;
+    if (daysBetween(p.sentAt) < 3) return false;
     return true;
   });
 
-  if (TEST_MODE) console.logger.info(`${eligible.length} prospect(s) eligible for LinkedIn actions`);
-  logger.info(`${eligible.length} prospects eligible for LinkedIn outreach`);
+  const connectionBatch = needConnection.slice(0, MAX_CONNECTIONS_PER_BATCH);
+  const connectionMessages = [];
 
-  if (eligible.length === 0) {
-    logger.info("No eligible prospects for LinkedIn outreach today.");
-    await linkedin.closeBrowser();
-    return;
+  for (const p of connectionBatch) {
+    try {
+      const icebreaker = await generateIcebreaker(p);
+      connectionMessages.push({
+        name: p.name,
+        company: p.company,
+        niche: p.niche,
+        city: p.city,
+        linkedinUrl: p.linkedinProfile,
+        message: icebreaker,
+        rowIndex: p.rowIndex,
+      });
+    } catch (err) {
+      logger.error(`Icebreaker generation failed for ${p.name}: ${err.message}`);
+    }
   }
 
-  let actionsPerformed = 0;
-  let errors = 0;
+  logger.info(`Generated ${connectionMessages.length} connection icebreakers`);
 
-  for (const p of eligible) {
-    // Check session expiry
-    if (linkedin.isSessionExpired()) {
-      logger.info("Session time limit reached (30 min) — stopping");
-      break;
-    }
+  // ---------------------------------------------------------------------------
+  // PART 2: DMs (prospects who accepted connections)
+  // ---------------------------------------------------------------------------
+  const needDM = prospects.filter((p) => {
+    if (!p.linkedinProfile) return false;
+    if (respondents.has(p.email)) return false;
+    if (!["connected", "dm_1", "dm_2", "dm_3", "dm_4"].includes(p.linkedinStatus)) return false;
+    const nextStep = getNextStep(p.linkedinStatus);
+    if (!nextStep) return false;
+    if (nextStep.step.startsWith("dm_") && !isDMDue(nextStep.step, p.linkedinLastAction)) return false;
+    return true;
+  });
 
-    // Determine next action
+  const dmBatch = needDM.slice(0, MAX_DMS_PER_BATCH);
+  const dmMessages = [];
+
+  for (const p of dmBatch) {
     const nextStep = getNextStep(p.linkedinStatus);
     if (!nextStep) continue;
 
-    // Check if DM is due (based on timing)
-    if (nextStep.step.startsWith("dm_") && !isDMDue(nextStep.step, p.linkedinLastAction)) {
-      if (TEST_MODE) console.logger.info(`  ${p.name}: ${nextStep.label} not due yet`);
-      continue;
-    }
-
-    // Check connection_sent — need to verify if accepted
-    if (p.linkedinStatus === "connection_sent") {
-      // Check if 14 days have passed (connection expired)
-      if (daysBetween(p.linkedinLastAction) > 14) {
-        try {
-          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}`, ["connection_expired"]);
-          logger.info(`Connection expired for ${p.name} — 14 days without acceptance`);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-        continue;
-      }
-
-      // Check connection status
-      const status = await linkedin.checkConnectionStatus(p.linkedinProfile);
-      await linkedin.randomDelay();
-
-      if (status === "connected") {
-        // Update status and proceed to DM 1
-        try {
-          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, ["connected", today]);
-          p.linkedinStatus = "connected";
-          // Get next step again (should be dm_1)
-          const dmStep = getNextStep("connected");
-          if (dmStep) {
-            // Fall through to execute DM 1 below
-          }
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-      } else if (status === "pending") {
-        if (TEST_MODE) console.logger.info(`  ${p.name}: Connection still pending`);
-        continue;
-      } else {
-        continue;
-      }
-    }
-
-    // Re-evaluate next step after potential status update
-    const actionStep = getNextStep(p.linkedinStatus);
-    if (!actionStep) continue;
-
-    if (TEST_MODE) {
-      console.logger.info(`  ${p.name} (${p.company}): ${actionStep.label} — LinkedIn: ${p.linkedinProfile}`);
-    }
-
-    // Execute the action
-    let result;
-    if (actionStep.step === "warm_up_follow") {
-      if (TEST_MODE) {
-        console.logger.info(`    WOULD FOLLOW profile`);
-        result = { success: true };
-      } else {
-        result = await linkedin.followProfile(p.linkedinProfile);
-      }
-
-      if (result.success) {
-        try {
-          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, [
-            "warm_up_follow",  // linkedin_status
-            today,              // linkedin_last_action
-          ]);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-        actionsPerformed++;
-      } else {
-        logger.error(`Follow failed for ${p.name}: ${result.error}`);
-        errors++;
-      }
-    } else if (actionStep.step === "warm_up_like") {
-      if (TEST_MODE) {
-        console.logger.info(`    WOULD LIKE recent post`);
-        result = { success: true };
-      } else {
-        result = await linkedin.likeRecentPost(p.linkedinProfile);
-      }
-
-      if (result.success) {
-        try {
-          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, [
-            "warm_up_like",    // linkedin_status
-            today,              // linkedin_last_action
-          ]);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-        actionsPerformed++;
-      } else {
-        logger.error(`Like failed for ${p.name}: ${result.error}`);
-        errors++;
-      }
-    } else if (actionStep.step === "connection_request") {
-      const note = await generateConnectionNote({
-        name: p.name, company: p.company, niche: p.niche, city: p.city, country: p.country,
-      });
-      if (TEST_MODE) {
-        console.logger.info(`    Note: "${note}"`);
-        console.logger.info(`    WOULD SEND connection request`);
-        result = { success: true };
-      } else {
-        result = await linkedin.sendConnectionRequest(p.linkedinProfile, note);
-      }
-
-      if (result.success) {
-        try {
-          await updateCells(PROSPECT_TAB, `O${p.rowIndex}:R${p.rowIndex}`, [
-            "both",              // channel
-            p.linkedinProfile,   // linkedin_profile (unchanged)
-            "connection_sent",   // linkedin_status
-            today,               // linkedin_last_action
-          ]);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-        actionsPerformed++;
-      } else {
-        logger.error(`Connection request failed for ${p.name}: ${result.error}`);
-        if (result.error === "Already connected") {
-          try {
-            await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, ["connected", today]);
-          } catch (err) {
-            logger.error(`Sheet update failed: ${err.message}`);
-          }
-        }
-        errors++;
-      }
-    } else if (actionStep.step.startsWith("dm_")) {
-      const dmText = await generateDM(actionStep.step, {
-        name: p.name, company: p.company, niche: p.niche, city: p.city, country: p.country,
-      });
-
-      if (TEST_MODE) {
-        console.logger.info(`    DM: "${dmText}"`);
-        console.logger.info(`    WOULD SEND DM`);
-        result = { success: true };
-      } else {
-        result = await linkedin.sendDirectMessage(p.linkedinProfile, dmText);
-      }
-
-      if (result.success) {
-        try {
-          await updateCells(PROSPECT_TAB, `Q${p.rowIndex}:R${p.rowIndex}`, [
-            actionStep.step,  // linkedin_status = dm_1, dm_2, etc.
-            today,             // linkedin_last_action
-          ]);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${p.name}: ${err.message}`);
-        }
-        actionsPerformed++;
-      } else {
-        logger.error(`DM failed for ${p.name}: ${result.error}`);
-        errors++;
-      }
-    }
-
-    // Random delay between actions
-    if (!TEST_MODE) {
-      await linkedin.randomDelay();
-    }
-  }
-
-  // Check for LinkedIn reply messages
-  if (!TEST_MODE) {
-    logger.info("Checking LinkedIn inbox for replies...");
-    const replies = await linkedin.checkInboxReplies();
-
-    for (const reply of replies) {
-      // Try to match reply to a known prospect by name
-      const match = prospects.find((p) =>
-        p.linkedinStatus.startsWith("dm_") &&
-        reply.senderName.toLowerCase().includes(p.name.split(" ")[0].toLowerCase())
-      );
-
-      if (match) {
-        logger.info(`LinkedIn reply from ${reply.senderName} (matched: ${match.name})`);
-
-        // Update sheet
-        try {
-          await updateCells(PROSPECT_TAB, `O${match.rowIndex}:S${match.rowIndex}`, [
-            "engaged",          // channel
-            match.linkedinProfile,
-            "replied",          // linkedin_status
-            today,              // linkedin_last_action
-            "linkedin",         // engagement_channel
-          ]);
-        } catch (err) {
-          logger.error(`Sheet update failed for ${match.name}: ${err.message}`);
-        }
-
-        // Log to Replies sheet
-        try {
-          await appendRow(REPLY_TAB, [
-            logger.ts(), match.name, match.email, "LinkedIn Reply", "Logged",
-            "", // follow-up date
-            "", // thread ID
-            `LinkedIn DM: "${reply.message.slice(0, 200)}"`,
-          ]);
-        } catch (err) {
-          logger.error(`Replies sheet log failed: ${err.message}`);
-        }
-
-        // Alert Usama
-        try {
-          await sendEmail(
-            ALERT_EMAIL,
-            `LinkedIn reply from ${reply.senderName} at ${match.company}`,
-            [
-              `${reply.senderName} replied to your LinkedIn DM!`,
-              "",
-              `Company: ${match.company}`,
-              `Niche: ${match.niche}`,
-              `Message: "${reply.message}"`,
-              "",
-              "Reply to them directly on LinkedIn.",
-              "",
-              "— ReceptFlow System",
-            ].join("\n")
-          );
-        } catch (err) {
-          logger.error(`Alert email failed: ${err.message}`);
-        }
-      }
-    }
-  }
-
-  // Close browser
-  await linkedin.closeBrowser();
-
-  const status = linkedin.getRateLimitStatus();
-  logger.info(`LinkedIn outreach complete: ${actionsPerformed} actions, ${errors} errors. Rate limits: ${status.connections} connections, ${status.dms} DMs, ${status.total} total`);
-
-  // Summary email
-  if (!TEST_MODE && actionsPerformed > 0) {
     try {
-      await sendEmail(
-        ALERT_EMAIL,
-        `LinkedIn outreach: ${actionsPerformed} actions today`,
-        [
-          `LinkedIn outreach summary:`,
-          `Actions performed: ${actionsPerformed}`,
-          `Errors: ${errors}`,
-          `Connections sent: ${status.connections}`,
-          `DMs sent: ${status.dms}`,
-          "",
-          "— ReceptFlow System",
-        ].join("\n")
-      );
+      const dmText = await generateDM(nextStep.step, {
+        name: p.name,
+        company: p.company,
+        niche: p.niche,
+        city: p.city,
+        country: p.country,
+      });
+      dmMessages.push({
+        name: p.name,
+        company: p.company,
+        linkedinUrl: p.linkedinProfile,
+        step: nextStep.label,
+        message: dmText,
+        rowIndex: p.rowIndex,
+      });
     } catch (err) {
-      logger.error(`Summary email failed: ${err.message}`);
+      logger.error(`DM generation failed for ${p.name}: ${err.message}`);
     }
   }
 
-  if (TEST_MODE) {
-    console.logger.info(`\nSummary: ${actionsPerformed} actions, ${errors} errors`);
-    console.logger.info(`Rate limits: ${status.connections}/${linkedin.RATE_LIMITS.maxConnectionsPerDay} connections, ${status.dms}/${linkedin.RATE_LIMITS.maxDMsPerDay} DMs`);
+  logger.info(`Generated ${dmMessages.length} DM messages`);
+
+  // ---------------------------------------------------------------------------
+  // PART 3: Automated sending via browser
+  // ---------------------------------------------------------------------------
+  if (connectionMessages.length === 0 && dmMessages.length === 0) {
+    logger.info("No LinkedIn messages to send today — done");
+    return;
+  }
+
+  logger.info(`Batch ready: ${connectionMessages.length} connections + ${dmMessages.length} DMs`);
+
+  // Launch browser and validate LinkedIn session
+  let sessionValid = false;
+  try {
+    await launchBrowser();
+    sessionValid = await validateSession();
+  } catch (err) {
+    logger.error(`Browser launch failed: ${err.message}`);
+  }
+
+  if (!sessionValid) {
+    logger.error("LinkedIn session invalid — cookies may be expired. Sending manual batch email as fallback.");
+    await sendFallbackEmail(today, connectionMessages, dmMessages);
+    return;
+  }
+
+  // Warm up — scroll feed briefly to look human
+  await warmUp();
+  resetDailyCounts();
+
+  // Send connection requests automatically
+  const connectionResults = { sent: 0, failed: 0, skipped: 0, details: [] };
+
+  for (const msg of connectionMessages) {
+    try {
+      logger.info(`Sending connection to ${msg.name} (${msg.company})...`);
+      const result = await sendConnectionRequest(msg.linkedinUrl, msg.message);
+
+      if (result.success) {
+        connectionResults.sent++;
+        connectionResults.details.push(`✓ ${msg.name}`);
+        // Update sheet: connection actually sent
+        await updateCells(PROSPECT_TAB, `Q${msg.rowIndex}:R${msg.rowIndex}`, [
+          "connection_sent",
+          today,
+        ]).catch(err => logger.error(`Sheet update failed for ${msg.name}: ${err.message}`));
+      } else {
+        if (result.error?.includes("Already connected") || result.error?.includes("pending")) {
+          connectionResults.skipped++;
+          connectionResults.details.push(`⊘ ${msg.name} — ${result.error}`);
+          await updateCells(PROSPECT_TAB, `Q${msg.rowIndex}:R${msg.rowIndex}`, [
+            result.error.includes("Already") ? "connected" : "connection_pending",
+            today,
+          ]).catch(() => {});
+        } else {
+          connectionResults.failed++;
+          connectionResults.details.push(`✗ ${msg.name} — ${result.error}`);
+        }
+      }
+
+      // Human-like delay between actions (45s-2min)
+      if (connectionMessages.indexOf(msg) < connectionMessages.length - 1) {
+        await randomDelay();
+      }
+    } catch (err) {
+      connectionResults.failed++;
+      connectionResults.details.push(`✗ ${msg.name} — ${err.message}`);
+      logger.error(`Connection failed for ${msg.name}: ${err.message}`);
+    }
+  }
+
+  // Send DMs automatically (only to already-connected prospects)
+  const dmResults = { sent: 0, failed: 0, details: [] };
+
+  for (const msg of dmMessages) {
+    try {
+      logger.info(`Sending DM to ${msg.name} (${msg.step})...`);
+      const result = await sendDirectMessage(msg.linkedinUrl, msg.message);
+
+      if (result.success) {
+        dmResults.sent++;
+        dmResults.details.push(`✓ ${msg.name} (${msg.step})`);
+        await updateCells(PROSPECT_TAB, `Q${msg.rowIndex}:R${msg.rowIndex}`, [
+          `dm_sent_${msg.step.toLowerCase().replace(/\s+/g, "_")}`,
+          today,
+        ]).catch(err => logger.error(`Sheet update failed for ${msg.name}: ${err.message}`));
+      } else {
+        dmResults.failed++;
+        dmResults.details.push(`✗ ${msg.name} — ${result.error}`);
+      }
+
+      if (dmMessages.indexOf(msg) < dmMessages.length - 1) {
+        await randomDelay();
+      }
+    } catch (err) {
+      dmResults.failed++;
+      dmResults.details.push(`✗ ${msg.name} — ${err.message}`);
+      logger.error(`DM failed for ${msg.name}: ${err.message}`);
+    }
+  }
+
+  // Close browser session
+  await closeBrowser();
+
+  // Send summary report
+  const rateLimits = getRateLimitStatus();
+  let report = `LinkedIn Automated Batch — ${today}\n\n`;
+  report += `CONNECTIONS: ${connectionResults.sent} sent, ${connectionResults.skipped} skipped, ${connectionResults.failed} failed\n`;
+  report += connectionResults.details.join("\n") + "\n\n";
+  if (dmResults.details.length > 0) {
+    report += `DMs: ${dmResults.sent} sent, ${dmResults.failed} failed\n`;
+    report += dmResults.details.join("\n") + "\n\n";
+  }
+  report += `Rate limits used: ${rateLimits.connections} connections, ${rateLimits.dms} DMs, ${rateLimits.total} total`;
+
+  try {
+    await sendEmail(ALERT_EMAIL, `LinkedIn: ${connectionResults.sent} connections + ${dmResults.sent} DMs sent`, report);
+  } catch (err) {
+    logger.error(`Report email failed: ${err.message}`);
+  }
+
+  logger.info(`LinkedIn batch complete — ${connectionResults.sent}/${connectionMessages.length} connections, ${dmResults.sent}/${dmMessages.length} DMs sent`);
+}
+
+// ---------------------------------------------------------------------------
+// Fallback: email manual batch when browser automation fails
+// ---------------------------------------------------------------------------
+async function sendFallbackEmail(today, connectionMessages, dmMessages) {
+  let emailBody = `LinkedIn Daily Batch — ${today}\n`;
+  emailBody += `⚠️ AUTO-SEND FAILED (cookies expired) — please send manually:\n\n`;
+  emailBody += `${connectionMessages.length} connection requests + ${dmMessages.length} DMs ready.\n\n`;
+
+  if (connectionMessages.length > 0) {
+    emailBody += `${"=".repeat(60)}\nCONNECTION REQUESTS (${connectionMessages.length})\n${"=".repeat(60)}\n\n`;
+    connectionMessages.forEach((msg, i) => {
+      emailBody += `--- #${i + 1} ---\nName: ${msg.name}\nCompany: ${msg.company} (${msg.niche})\nLinkedIn: ${msg.linkedinUrl}\n\nMessage:\n${msg.message}\n\n`;
+    });
+  }
+
+  if (dmMessages.length > 0) {
+    emailBody += `${"=".repeat(60)}\nDIRECT MESSAGES (${dmMessages.length})\n${"=".repeat(60)}\n\n`;
+    dmMessages.forEach((msg, i) => {
+      emailBody += `--- #${i + 1} (${msg.step}) ---\nName: ${msg.name}\nCompany: ${msg.company}\nLinkedIn: ${msg.linkedinUrl}\n\nMessage:\n${msg.message}\n\n`;
+    });
+  }
+
+  try {
+    await sendEmail(ALERT_EMAIL, `⚠️ LinkedIn batch (MANUAL) — ${connectionMessages.length} connections + ${dmMessages.length} DMs`, emailBody);
+    logger.info("Fallback manual batch email sent");
+  } catch (err) {
+    logger.error(`Fallback email failed: ${err.message}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Start
+// Start — Weekdays at 8:30am AEST (so you can send before 9am)
 // ---------------------------------------------------------------------------
-if (require.main === module) {
-  if (TEST_MODE) {
-    runLinkedInOutreach().then(() => {
-      console.logger.info("\nDone.");
-      process.exit(0);
-    }).catch((err) => {
-      console.error(`\nFATAL: ${err.message}`);
-      process.exit(1);
-    });
-  } else if (process.argv.includes("--run-now")) {
-    logger.info("LinkedIn Outreach — manual run triggered");
-    runLinkedInOutreach().then(() => {
-      logger.info("Manual run complete.");
-      process.exit(0);
-    }).catch((err) => {
-      logger.error(`FATAL: ${err.message}`);
-      process.exit(1);
-    });
-  } else {
-    // Random offset: 10:00-10:15 AEST to avoid predictable timing
-    const minuteOffset = Math.floor(Math.random() * 15);
-    logger.info(`LinkedIn Outreach started — runs weekdays at 10:${String(minuteOffset).padStart(2, "0")} AEST`);
-    cron.schedule(`${minuteOffset} 10 * * 1-5`, runLinkedInOutreach, { timezone: "Australia/Melbourne" });
-  }
-}
+logger.info("LinkedIn Outreach (daily batch) started — runs weekdays at 8:30am AEST");
+cron.schedule("30 8 * * 1-5", runLinkedInBatch, {
+  timezone: "Australia/Melbourne",
+});
 
-module.exports = { run: runLinkedInOutreach };
+module.exports = { run: runLinkedInBatch };

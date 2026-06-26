@@ -623,41 +623,96 @@ async function sendConnectionRequest(linkedinUrl, note) {
  */
 async function clickConnectButton(vanityName, note) {
   // First: dismiss any existing modals/overlays that might block clicks
-  await dismissModals();
+  // But do NOT press Escape — it can close the page or interfere
+  try {
+    const dismissSelectors = [
+      'button[aria-label="Dismiss"]',
+      'button[aria-label="Close"]',
+      '.artdeco-modal__dismiss',
+    ];
+    for (const sel of dismissSelectors) {
+      const btn = await _page.$(sel);
+      if (btn) {
+        await btn.click({ force: true }).catch(() => {});
+        await _page.waitForTimeout(300);
+      }
+    }
+  } catch (_) {}
 
   // Strategy: look for Connect button in multiple places
   // LinkedIn has different layouts — Connect can be a primary button or under "More"
 
-  // 1. Try direct Connect button
-  let connectBtn = await _page.$('button[aria-label*="connect" i], button[aria-label*="Connect" i]');
+  // 1. Try direct Connect button by aria-label
+  let connectBtn = await _page.$('button[aria-label*="connect" i]:not([aria-label*="disconnect" i])');
 
-  // 2. Also try matching by button text
+  // 2. Try matching by button text content (includes variations)
   if (!connectBtn) {
     const buttons = await _page.$$("button");
     for (const btn of buttons) {
       const text = await btn.textContent().catch(() => "");
-      if (text.trim().toLowerCase() === "connect") {
-        connectBtn = btn;
-        break;
+      const trimmed = text.trim().toLowerCase();
+      if (trimmed === "connect" || trimmed === "connect with" || trimmed.startsWith("connect\n")) {
+        // Make sure the button is visible
+        const isVisible = await btn.isVisible().catch(() => false);
+        if (isVisible) {
+          connectBtn = btn;
+          break;
+        }
       }
     }
   }
 
-  // 3. If no direct Connect, check the "More" dropdown
+  // 3. Try span inside button (LinkedIn wraps text in spans)
+  if (!connectBtn) {
+    const spans = await _page.$$("button span");
+    for (const span of spans) {
+      const text = await span.textContent().catch(() => "");
+      if (text.trim().toLowerCase() === "connect") {
+        connectBtn = await span.evaluateHandle((el) => el.closest("button"));
+        if (connectBtn) break;
+      }
+    }
+  }
+
+  // 4. If no direct Connect, check the "More" dropdown
   if (!connectBtn) {
     log(`No direct Connect button found, trying More dropdown...`);
-    const moreBtn = await _page.$('button[aria-label*="More actions" i], button[aria-label*="More" i]');
+    // Try multiple More button selectors
+    let moreBtn = await _page.$('button[aria-label*="More actions" i]');
+    if (!moreBtn) moreBtn = await _page.$('button[aria-label*="More" i][class*="artdeco"]');
+    if (!moreBtn) {
+      const buttons = await _page.$$("button");
+      for (const btn of buttons) {
+        const text = await btn.textContent().catch(() => "");
+        if (text.trim().toLowerCase() === "more" || text.trim().toLowerCase() === "more…" || text.trim().toLowerCase() === "more...") {
+          const isVisible = await btn.isVisible().catch(() => false);
+          if (isVisible) { moreBtn = btn; break; }
+        }
+      }
+    }
     if (moreBtn) {
       await moreBtn.click({ force: true });
-      await _page.waitForTimeout(1000 + Math.random() * 500);
+      await _page.waitForTimeout(1500 + Math.random() * 500);
 
-      // Look for Connect in the dropdown menu
-      const menuItems = await _page.$$('[role="menuitem"], [role="option"], .artdeco-dropdown__content-inner li');
+      // Look for Connect in the dropdown menu — broader selectors
+      const menuItems = await _page.$$('[role="menuitem"], [role="option"], li.artdeco-dropdown__item, .artdeco-dropdown__content-inner li, div[role="listbox"] div');
       for (const item of menuItems) {
         const text = await item.textContent().catch(() => "");
-        if (text.toLowerCase().includes("connect")) {
+        if (text.trim().toLowerCase().includes("connect")) {
           connectBtn = item;
           break;
+        }
+      }
+
+      // Also try links inside dropdown
+      if (!connectBtn) {
+        const links = await _page.$$('a, button');
+        for (const link of links) {
+          const text = await link.textContent().catch(() => "");
+          if (text.trim().toLowerCase().startsWith("connect")) {
+            const isVisible = await link.isVisible().catch(() => false);
+            if (isVisible) { connectBtn = link; break; }
+          }
         }
       }
     }
@@ -666,51 +721,70 @@ async function clickConnectButton(vanityName, note) {
   if (!connectBtn) {
     // Check if already connected (Message button visible) or pending
     const pageText = await _page.evaluate(() => document.body.innerText.slice(0, 5000));
-    if (pageText.includes("Message") && !pageText.includes("Connect")) {
+    if ((pageText.includes("Message") || pageText.includes("message")) && !pageText.toLowerCase().includes("connect")) {
       return { success: false, error: "Already connected" };
     }
-    if (pageText.includes("Pending")) {
+    if (pageText.includes("Pending") || pageText.includes("pending") || pageText.includes("Invitation sent")) {
       return { success: false, error: "Connection request already pending" };
     }
-    log(`Could not find Connect button for ${vanityName}. Page text preview: ${pageText.slice(0, 200)}`);
+
+    // Debug: log all visible button texts for troubleshooting
+    const allBtnTexts = await _page.evaluate(() => {
+      return Array.from(document.querySelectorAll("button")).map(b => b.textContent.trim().slice(0, 30)).filter(t => t).slice(0, 15);
+    }).catch(() => []);
+    log(`Could not find Connect button for ${vanityName}. Visible buttons: [${allBtnTexts.join(", ")}]`);
     return { success: false, error: `No Connect button found on profile page for ${vanityName}` };
   }
 
   // Click Connect — use force:true to bypass any overlay interception
   log(`Clicking Connect button for ${vanityName}`);
   await connectBtn.click({ force: true });
-  await _page.waitForTimeout(2000 + Math.random() * 1000);
-
-  // Dismiss any modals that aren't the connection dialog
-  // (LinkedIn sometimes shows a "How do you know this person?" prompt)
+  await _page.waitForTimeout(2500 + Math.random() * 1000);
 
   // Handle the connection dialog — look for the send/note options
   if (note) {
-    // Look for "Add a note" button in the dialog
-    const addNoteBtn = await findButtonByText(["Add a note"]);
+    // Look for "Add a note" button in the dialog (try multiple variations)
+    let addNoteBtn = await findButtonByTextIncludes(["Add a note", "Add note", "Personalize"]);
     if (addNoteBtn) {
       await addNoteBtn.click({ force: true });
-      await _page.waitForTimeout(1000);
+      await _page.waitForTimeout(1500);
     }
 
-    // Look for the note textarea
-    const textarea = await _page.$('textarea[name="message"], textarea[id*="custom-message"], #custom-message, textarea.connect-button-send-invite__custom-message');
+    // Look for the note textarea — broad selectors
+    let textarea = await _page.$('textarea[name="message"]');
+    if (!textarea) textarea = await _page.$('textarea[id*="custom-message"]');
+    if (!textarea) textarea = await _page.$('#custom-message');
+    if (!textarea) textarea = await _page.$('textarea.connect-button-send-invite__custom-message');
+    if (!textarea) textarea = await _page.$('.artdeco-modal textarea');
+    if (!textarea) textarea = await _page.$('[role="dialog"] textarea');
     if (!textarea) {
-      // Try broader search
+      // Last resort: find any visible textarea on the page
       const allTextareas = await _page.$$("textarea");
-      if (allTextareas.length > 0) {
-        await allTextareas[0].fill(note.slice(0, 300));
+      for (const ta of allTextareas) {
+        const isVisible = await ta.isVisible().catch(() => false);
+        if (isVisible) { textarea = ta; break; }
       }
-    } else {
+    }
+
+    if (textarea) {
       await textarea.fill(note.slice(0, 300));
+      log(`Note added for ${vanityName}`);
+    } else {
+      log(`Could not find note textarea for ${vanityName} — sending without note`);
     }
     await _page.waitForTimeout(500 + Math.random() * 500);
   }
 
-  // Click Send / Send now / Send without a note
-  let sendBtn = await findButtonByText(["Send", "Send now", "Send without a note"]);
+  // Click Send / Send now / Send without a note — broader matching
+  let sendBtn = await findButtonByTextIncludes(["Send", "Send now", "Send without a note", "Send invitation"]);
   if (!sendBtn) {
     sendBtn = await _page.$('button[aria-label*="Send" i]:not([aria-label*="message" i])');
+  }
+  if (!sendBtn) {
+    sendBtn = await _page.$('[role="dialog"] button[type="submit"]');
+  }
+  if (!sendBtn) {
+    sendBtn = await _page.$('.artdeco-modal button[aria-label*="send" i]');
   }
 
   if (sendBtn) {
@@ -734,9 +808,17 @@ async function clickConnectButton(vanityName, note) {
   // If no Send button found, check if the initial Connect click already sent
   log(`No Send button found — checking if connection was sent directly`);
   const afterText = await _page.evaluate(() => document.body.innerText.slice(0, 3000));
-  if (afterText.includes("Pending") || afterText.includes("pending")) {
+  if (afterText.includes("Pending") || afterText.includes("pending") || afterText.includes("Invitation sent") || afterText.includes("Withdraw")) {
+    log(`Connection appears sent for ${vanityName} (status changed to pending/withdraw)`);
     return { success: true };
   }
+
+  // Debug: log dialog contents
+  const dialogText = await _page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"], .artdeco-modal');
+    return dialog ? dialog.innerText.slice(0, 300) : "(no dialog found)";
+  }).catch(() => "(eval failed)");
+  log(`Send failed for ${vanityName}. Dialog content: ${dialogText}`);
 
   return { success: false, error: "Could not complete connection flow (no Send button)" };
 }
@@ -784,6 +866,27 @@ async function findButtonByText(texts) {
     const trimmed = text.trim().toLowerCase();
     for (const target of texts) {
       if (trimmed === target.toLowerCase()) {
+        return btn;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Find a button by partial text content match (case-insensitive).
+ * Also checks aria-label. Returns first visible match.
+ */
+async function findButtonByTextIncludes(texts) {
+  const buttons = await _page.$$("button");
+  for (const btn of buttons) {
+    const isVisible = await btn.isVisible().catch(() => false);
+    if (!isVisible) continue;
+    const text = await btn.textContent().catch(() => "");
+    const ariaLabel = await btn.getAttribute("aria-label").catch(() => "") || "";
+    const combined = `${text} ${ariaLabel}`.trim().toLowerCase();
+    for (const target of texts) {
+      if (combined.includes(target.toLowerCase())) {
         return btn;
       }
     }
