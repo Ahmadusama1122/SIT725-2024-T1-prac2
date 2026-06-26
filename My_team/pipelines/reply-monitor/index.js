@@ -263,6 +263,31 @@ function isWarmupOrSystemEmail(email) {
   if (snippet.includes("report domain:") || snippet.includes("dmarc") ||
       snippet.includes("submitter:") || snippet.includes("report-id:")) return true;
 
+  // Apollo warmup subject patterns (generic "Re:" subjects we never sent)
+  const warmupSubjects = [
+    "keeping connected", "touching base", "just checking in",
+    "quick catch up", "quick check", "staying in touch",
+    "reply concerning your question", "following up on our chat",
+    "regarding your inquiry", "circling back", "reconnecting",
+    "wanted to reach out", "hope you're well", "nice to hear from you",
+    "getting back to you", "continuing our conversation",
+    "your recent message", "our discussion",
+  ];
+  if (warmupSubjects.some(ws => subject.includes(ws))) return true;
+
+  // Apollo warmup snippet patterns (generic short positive replies)
+  const warmupSnippets = [
+    "sounds great", "sounds good to me", "love to hear more",
+    "definitely interested", "count me in", "tell me more",
+    "looking forward", "let's connect", "great to hear",
+    "that works for me", "appreciate you reaching out",
+    "i'd love to learn", "thanks for sharing",
+  ];
+  // Only flag as warmup if snippet matches AND there's no mention of our product/company
+  const mentionsUs = snippet.includes("receptflow") || snippet.includes("ai receptionist") ||
+    snippet.includes("after-hours") || snippet.includes("after hours");
+  if (!mentionsUs && warmupSnippets.some(ws => snippet.includes(ws))) return true;
+
   return false;
 }
 
@@ -835,6 +860,27 @@ async function processEmail(email) {
   } catch (err) {
     logger.error(`Thread fetch failed for ${email.threadId}: ${err.message}`);
     threadMessages = [{ from: email.from, subject: email.subject, date: email.date, body: email.snippet }];
+  }
+
+  // Thread validation: skip emails where we never sent the original outreach
+  // Real prospect replies are in threads that contain at least one email FROM us.
+  // Apollo warmup emails are standalone conversations we never initiated.
+  const ourAddresses = [
+    config.gmailUserEmail,
+    config.gmailUserEmail2,
+    config.gmailUserEmail3,
+  ].filter(Boolean).map(e => e.toLowerCase());
+
+  const threadHasOurEmail = threadMessages.some(msg => {
+    const msgSender = parseSender(msg.from || "");
+    return ourAddresses.includes(msgSender.email.toLowerCase());
+  });
+
+  if (!threadHasOurEmail) {
+    logger.info(`WARMUP SKIP: ${senderEmail} — thread ${email.threadId} has no outbound email from us (likely Apollo warmup)`);
+    if (TEST_MODE) console.logger.info(`  WARMUP SKIP: No outbound email from us in thread — likely Apollo warmup`);
+    await markAsRead(email.id);
+    return;
   }
 
   // Get latest message body
