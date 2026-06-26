@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// Niche config — 4 niches per day, 9-niche rotation across AU/NZ/UK
+// Niche config — 6 niches per day, 9-niche rotation across AU/NZ/UK
 // ---------------------------------------------------------------------------
 const DAY_NICHES = {
-  1: ["dental", "law", "physio", "trades"],
-  2: ["real estate", "IT services", "consulting", "wellness clinic"],
-  3: ["medical clinic", "dental", "law", "physio"],
-  4: ["trades", "real estate", "IT services", "consulting"],
-  5: ["wellness clinic", "medical clinic", "dental", "law"],
+  1: ["dental", "law", "physio", "trades", "real estate", "IT services"],
+  2: ["consulting", "wellness clinic", "medical clinic", "dental", "law", "physio"],
+  3: ["trades", "real estate", "IT services", "consulting", "wellness clinic", "medical clinic"],
+  4: ["dental", "law", "physio", "trades", "real estate", "IT services"],
+  5: ["consulting", "wellness clinic", "medical clinic", "dental", "law", "physio"],
 };
 
 const CHAIN_INDICATORS = [
@@ -243,11 +243,12 @@ const NICHE_BLOG_POSTS = {
 };
 
 const INBOX_LIMITS = {
-  primary:   80,
-  secondary: 80,
+  primary:   100,
+  secondary: 100,
+  tertiary:  100,
 };
 
-const TARGET_PER_NICHE = 15;
+const TARGET_PER_NICHE = 25;
 
 module.exports = {
   DAY_NICHES,

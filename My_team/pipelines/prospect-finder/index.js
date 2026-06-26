@@ -25,8 +25,9 @@ const SHEET_TAB = SHEETS.PROSPECTS;
 
 // Startup diagnostics
 console.log(`Mode: ${TEST_MODE ? "TEST" : "PRODUCTION"}`);
-console.log(`Primary inbox: ${config.gmailUserEmail} (limit: 80/day)`);
-console.log(`Secondary inbox: ${config.gmailUserEmail2 || "NOT CONFIGURED"} (limit: 80/day)`);
+console.log(`Primary inbox: ${config.gmailUserEmail} (limit: ${INBOX_LIMITS.primary}/day)`);
+console.log(`Secondary inbox: ${config.gmailUserEmail2 || "NOT CONFIGURED"} (limit: ${INBOX_LIMITS.secondary}/day)`);
+console.log(`Tertiary inbox: ${config.gmailUserEmail3 || "NOT CONFIGURED"} (limit: ${INBOX_LIMITS.tertiary}/day)`);
 
 function fmtDate(d) {
   return d.toISOString().slice(0, 10);
@@ -137,6 +138,7 @@ async function findProspects() {
   let totalRows = 0;
   let alreadySentPrimary = 0;
   let alreadySentSecondary = 0;
+  let alreadySentTertiary = 0;
   try {
     const sentRows = await readRows(SHEET_TAB);
 
@@ -162,7 +164,9 @@ async function findProspects() {
 
         if (isToday) {
           const sentVia = (row[11] || "").trim().toLowerCase();
-          if (sentVia.includes("outreach") || sentVia === "secondary") {
+          if (sentVia.includes("contact") || sentVia.includes("trustrise")) {
+            alreadySentTertiary++;
+          } else if (sentVia.includes("outreach") || sentVia === "secondary") {
             alreadySentSecondary++;
           } else {
             alreadySentPrimary++;
@@ -180,12 +184,13 @@ async function findProspects() {
   // --- GLOBAL DAILY CAP CHECK ---
   const remainingPrimary = Math.max(0, INBOX_LIMITS.primary - alreadySentPrimary);
   const remainingSecondary = Math.max(0, INBOX_LIMITS.secondary - alreadySentSecondary);
-  const totalRemaining = remainingPrimary + remainingSecondary;
+  const remainingTertiary = Math.max(0, INBOX_LIMITS.tertiary - alreadySentTertiary);
+  const totalRemaining = remainingPrimary + remainingSecondary + remainingTertiary;
 
-  logger.info(`Daily cap check: already sent ${alreadySentPrimary} (primary) + ${alreadySentSecondary} (secondary) = ${alreadySentPrimary + alreadySentSecondary} today. Remaining: ${totalRemaining}`);
+  logger.info(`Daily cap check: already sent ${alreadySentPrimary} (primary) + ${alreadySentSecondary} (secondary) + ${alreadySentTertiary} (tertiary) = ${alreadySentPrimary + alreadySentSecondary + alreadySentTertiary} today. Remaining: ${totalRemaining}`);
 
   if (totalRemaining === 0) {
-    logger.info(`Daily cap reached (${INBOX_LIMITS.primary + INBOX_LIMITS.secondary} emails). No more emails will be sent today.`);
+    logger.info(`Daily cap reached (${INBOX_LIMITS.primary + INBOX_LIMITS.secondary + INBOX_LIMITS.tertiary} emails). No more emails will be sent today.`);
     return;
   }
 
@@ -208,10 +213,11 @@ async function findProspects() {
   // Process each niche and collect prospects
   const searchDedup = new Set(contacted);
   const allProspects = [];
-  const inboxCounts = { primary: alreadySentPrimary, secondary: alreadySentSecondary };
+  const hasTertiary = !!(config.gmailUserEmail3 && config.gmailRefreshToken3);
+  const inboxCounts = { primary: alreadySentPrimary, secondary: alreadySentSecondary, tertiary: alreadySentTertiary };
   for (let i = 0; i < niches.length; i++) {
     const niche = niches[i];
-    const inbox = i <= 1 ? "primary" : "secondary";
+    const inbox = i <= 1 ? "primary" : i <= 3 ? "secondary" : (hasTertiary ? "tertiary" : "secondary");
     logger.info(`--- Processing niche ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}, inbox: ${inbox}) ---`);
     if (TEST_MODE) console.log(`\n=== NICHE ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}, inbox: ${inbox}) ===`);
     const nicheProspects = await processNiche(niche, today, searchDedup, targeting, TARGET_PER_NICHE, country);
@@ -234,8 +240,8 @@ async function findProspects() {
     allProspects.push(...nicheProspects);
   }
 
-  logger.info(`Inbox assignment: primary=${inboxCounts.primary}, secondary=${inboxCounts.secondary} (total: ${inboxCounts.primary + inboxCounts.secondary})`);
-  if (TEST_MODE) console.log(`\nInbox assignment: primary=${inboxCounts.primary}, secondary=${inboxCounts.secondary}`);
+  logger.info(`Inbox assignment: primary=${inboxCounts.primary}, secondary=${inboxCounts.secondary}, tertiary=${inboxCounts.tertiary} (total: ${inboxCounts.primary + inboxCounts.secondary + inboxCounts.tertiary})`);
+  if (TEST_MODE) console.log(`\nInbox assignment: primary=${inboxCounts.primary}, secondary=${inboxCounts.secondary}, tertiary=${inboxCounts.tertiary}`);
 
   if (allProspects.length === 0) {
     logger.info("No prospects found across any niche. Exiting.");
@@ -269,9 +275,11 @@ async function findProspects() {
     contacted.add(p.email.toLowerCase());
 
     const inboxLabel = p.inbox;
-    const fromAddr = inboxLabel === "secondary"
-      ? (config.gmailUserEmail2 || config.gmailUserEmail)
-      : config.gmailUserEmail;
+    const fromAddr = inboxLabel === "tertiary"
+      ? (config.gmailUserEmail3 || config.gmailUserEmail)
+      : inboxLabel === "secondary"
+        ? (config.gmailUserEmail2 || config.gmailUserEmail)
+        : config.gmailUserEmail;
 
     if (TEST_MODE) {
       console.log(`  WOULD SEND to ${p.email} via ${fromAddr} (${inboxLabel}) — "${p.subject}" [${p.country}]`);
@@ -301,9 +309,11 @@ async function findProspects() {
   if (TEST_MODE) console.log("\nStep 5: Logging to Google Sheets...");
   for (const p of allProspects) {
     const inboxLabel = p.inbox || "primary";
-    const sentVia = inboxLabel === "secondary"
-      ? (config.gmailUserEmail2 || config.gmailUserEmail)
-      : config.gmailUserEmail;
+    const sentVia = inboxLabel === "tertiary"
+      ? (config.gmailUserEmail3 || config.gmailUserEmail)
+      : inboxLabel === "secondary"
+        ? (config.gmailUserEmail2 || config.gmailUserEmail)
+        : config.gmailUserEmail;
     try {
       await appendRow(SHEET_TAB, [
         today, p.name, p.company, p.email, p.city, p.niche,
@@ -328,17 +338,19 @@ async function findProspects() {
   // Step 6 — Summary email
   if (TEST_MODE) console.log("\nStep 6: Emailing prospect summary...");
 
-  const primaryNiche = niches[0] || "";
-  const secondaryNiches = niches.slice(1).join("+");
   const primaryAddr = config.gmailUserEmail;
   const secondaryAddr = config.gmailUserEmail2 || config.gmailUserEmail;
-  const nicheLabel = `${primaryNiche} (${primaryAddr}) + ${secondaryNiches} (${secondaryAddr})`;
+  const tertiaryAddr = config.gmailUserEmail3 || "NOT CONFIGURED";
+  const nicheLabel = niches.map((n, i) => {
+    const ib = i <= 1 ? primaryAddr : i <= 3 ? secondaryAddr : tertiaryAddr;
+    return `${n} (${ib})`;
+  }).join(" + ");
 
   const summaryParts = [];
 
   for (let i = 0; i < niches.length; i++) {
     const niche = niches[i];
-    const inboxNote = i === 0 ? primaryAddr : secondaryAddr;
+    const inboxNote = i <= 1 ? primaryAddr : i <= 3 ? secondaryAddr : tertiaryAddr;
     const nicheProspects = allProspects.filter((p) => p.niche === niche);
     const nicheRows = nicheProspects.map((p, j) => {
       const preview = p.emailBody ? p.emailBody.split("\n").slice(0, 2).join("\n   ") : "(no body)";
@@ -368,7 +380,7 @@ async function findProspects() {
     "=== INBOX BREAKDOWN ===",
     "",
     ...Object.entries(inboxBreakdown).map(([ib, n]) => {
-      const addr = ib === "primary" ? primaryAddr : ib === "secondary" ? secondaryAddr : ib;
+      const addr = ib === "primary" ? primaryAddr : ib === "secondary" ? secondaryAddr : ib === "tertiary" ? tertiaryAddr : ib;
       return `  ${addr} (${ib}): ${n} email(s) — limit ${INBOX_LIMITS[ib] || "?"}`;
     }),
     ""

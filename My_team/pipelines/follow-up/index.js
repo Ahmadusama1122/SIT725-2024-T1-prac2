@@ -76,7 +76,7 @@ const NICHE_PITCH_DATA = {
   },
 };
 
-const MAX_DAILY_FOLLOW_UPS = 80;
+const MAX_DAILY_FOLLOW_UPS = 120;
 
 // Chain business indicators — skip follow-ups for large/chain companies
 const CHAIN_INDICATORS = [
@@ -417,13 +417,16 @@ async function runFollowUps() {
       body = `Hi ${firstName},\n\nJust checking if you saw my earlier note. Happy to answer any questions — try it free at www.receptflow.com/register`;
     }
 
-    // Determine which inbox to send from
-    // Match original inbox — if sent from hello@ use hello@, otherwise use outreach@
-    const isPrimary = p.sentVia && (p.sentVia.includes("hello") || p.sentVia === config.gmailUserEmail);
-    const inbox = isPrimary ? "primary" : "secondary";
-    const fromAddr = isPrimary
-      ? config.gmailUserEmail
-      : (config.gmailUserEmail2 || config.gmailUserEmail);
+    // Determine which inbox to send from — match original sending domain
+    const sentViaLower = (p.sentVia || "").toLowerCase();
+    const isTertiary = sentViaLower.includes("contact") || sentViaLower.includes("trustrise");
+    const isPrimary = sentViaLower.includes("hello") || sentViaLower === (config.gmailUserEmail || "").toLowerCase();
+    const inbox = isTertiary ? "tertiary" : isPrimary ? "primary" : "secondary";
+    const fromAddr = isTertiary
+      ? (config.gmailUserEmail3 || config.gmailUserEmail)
+      : isPrimary
+        ? config.gmailUserEmail
+        : (config.gmailUserEmail2 || config.gmailUserEmail);
 
     if (TEST_MODE) {
       console.logger.info(`    Subject: ${subject}`);

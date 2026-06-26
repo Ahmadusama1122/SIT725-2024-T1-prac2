@@ -35,8 +35,12 @@ if (config.gmailRefreshToken3 && config.gmailUserEmail3) {
   gmail3 = google.gmail({ version: "v1", auth: oauth2Client3 });
 }
 
-const EMAIL_SIGNATURE =
-  "\n\n--\nUsama Ahmad\nFounder, ReceptFlow\nTry free for 7 days: www.receptflow.com/register\nreceptflow.com";
+function getSignature(inbox) {
+  if (inbox === "tertiary") {
+    return "\n\n--\nUsama Ahmad\nTrustRise Digital\nwww.trustrisedigital.com";
+  }
+  return "\n\n--\nUsama Ahmad\nFounder, ReceptFlow\nwww.receptflow.com";
+}
 
 /**
  * Encode a subject line for safe email delivery.
@@ -121,7 +125,7 @@ async function sendEmail(to, subject, body) {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
       body +
-      EMAIL_SIGNATURE
+      getSignature("primary")
   ).toString("base64url");
 
   try {
@@ -141,8 +145,8 @@ async function sendEmail(to, subject, body) {
 }
 
 /**
- * Send an email from a specific inbox ("primary" or "secondary").
- * Falls back to primary if secondary is not configured.
+ * Send an email from a specific inbox ("primary", "secondary", or "tertiary").
+ * Falls back to primary if secondary/tertiary is not configured.
  * @param {string} inbox — "primary" or "secondary"
  * @param {string} to
  * @param {string} subject
@@ -171,7 +175,7 @@ async function sendEmailFrom(inbox, to, subject, body) {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
       body +
-      EMAIL_SIGNATURE
+      getSignature(inbox)
   ).toString("base64url");
 
   try {
@@ -205,7 +209,7 @@ async function createDraft(to, subject, body) {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
       body +
-      EMAIL_SIGNATURE
+      getSignature("primary")
   ).toString("base64url");
 
   const res = await gmail.users.drafts.create({
@@ -326,7 +330,7 @@ async function createDraftReply(threadId, messageId, to, subject, body) {
       `MIME-Version: 1.0\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
       body +
-      EMAIL_SIGNATURE
+      getSignature("primary")
   ).toString("base64url");
 
   const res = await gmail.users.drafts.create({
@@ -339,4 +343,175 @@ async function createDraftReply(threadId, messageId, to, subject, body) {
   return res.data.id;
 }
 
-module.exports = { searchEmails, sendEmail, sendEmailFrom, createDraft, createDraftReply, getEmailBody, getThread, markAsRead };
+// ---------------------------------------------------------------------------
+// Multi-inbox helper — resolve Gmail client by inbox name
+// ---------------------------------------------------------------------------
+function getGmailClient(inbox) {
+  if (inbox === "tertiary" && gmail3) return gmail3;
+  if (inbox === "secondary" && gmail2) return gmail2;
+  return gmail;
+}
+
+function getFromEmail(inbox) {
+  if (inbox === "tertiary" && config.gmailUserEmail3) return config.gmailUserEmail3;
+  if (inbox === "secondary" && config.gmailUserEmail2) return config.gmailUserEmail2;
+  return config.gmailUserEmail;
+}
+
+// ---------------------------------------------------------------------------
+// Inbox-aware functions for multi-inbox reply monitoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Search emails from a specific inbox.
+ * @param {string} inbox — "primary", "secondary", or "tertiary"
+ * @param {string} query — Gmail search query
+ * @returns {Promise<Array>}
+ */
+async function searchEmailsFrom(inbox, query) {
+  const client = getGmailClient(inbox);
+
+  const res = await client.users.messages.list({
+    userId: "me",
+    q: query,
+    maxResults: 50,
+  });
+
+  const messages = res.data.messages || [];
+  const results = [];
+
+  for (const msg of messages) {
+    const full = await client.users.messages.get({
+      userId: "me",
+      id: msg.id,
+      format: "metadata",
+      metadataHeaders: ["From", "To", "Subject", "Date"],
+    });
+
+    const headers = {};
+    for (const h of full.data.payload.headers) {
+      headers[h.name.toLowerCase()] = h.value;
+    }
+
+    results.push({
+      id: full.data.id,
+      threadId: full.data.threadId,
+      snippet: full.data.snippet,
+      from: headers.from || "",
+      to: headers.to || "",
+      subject: headers.subject || "",
+      date: headers.date || "",
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Get full thread from a specific inbox.
+ * @param {string} inbox — "primary", "secondary", or "tertiary"
+ * @param {string} threadId
+ * @returns {Promise<Array>}
+ */
+async function getThreadFrom(inbox, threadId) {
+  const client = getGmailClient(inbox);
+
+  const res = await client.users.threads.get({
+    userId: "me",
+    id: threadId,
+    format: "full",
+  });
+
+  const messages = res.data.messages || [];
+  const thread = [];
+
+  for (const msg of messages) {
+    const headers = {};
+    for (const h of msg.payload.headers) {
+      headers[h.name.toLowerCase()] = h.value;
+    }
+
+    function extractText(payload) {
+      if (payload.mimeType === "text/plain" && payload.body && payload.body.data) {
+        return Buffer.from(payload.body.data, "base64url").toString("utf-8");
+      }
+      if (payload.parts) {
+        for (const part of payload.parts) {
+          const text = extractText(part);
+          if (text) return text;
+        }
+      }
+      return null;
+    }
+
+    thread.push({
+      id: msg.id,
+      from: headers.from || "",
+      to: headers.to || "",
+      subject: headers.subject || "",
+      date: headers.date || "",
+      body: extractText(msg.payload) || msg.snippet || "",
+    });
+  }
+
+  return thread;
+}
+
+/**
+ * Mark an email as read in a specific inbox.
+ * @param {string} inbox — "primary", "secondary", or "tertiary"
+ * @param {string} messageId
+ */
+async function markAsReadFrom(inbox, messageId) {
+  const client = getGmailClient(inbox);
+  await client.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: {
+      removeLabelIds: ["UNREAD"],
+    },
+  });
+}
+
+/**
+ * Create a draft reply in a specific inbox.
+ * @param {string} inbox — "primary", "secondary", or "tertiary"
+ * @param {string} threadId
+ * @param {string} messageId
+ * @param {string} to
+ * @param {string} subject
+ * @param {string} body
+ * @returns {Promise<string>} Draft ID
+ */
+async function createDraftReplyFrom(inbox, threadId, messageId, to, subject, body) {
+  const client = getGmailClient(inbox);
+  const fromEmail = getFromEmail(inbox);
+
+  const raw = Buffer.from(
+    `From: ${fromEmail}\r\n` +
+      `To: ${to}\r\n` +
+      `Subject: ${encodeSubject(subject)}\r\n` +
+      `In-Reply-To: ${messageId}\r\n` +
+      `References: ${messageId}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
+      body +
+      getSignature(inbox)
+  ).toString("base64url");
+
+  const res = await client.users.drafts.create({
+    userId: "me",
+    requestBody: {
+      message: { raw, threadId },
+    },
+  });
+
+  return res.data.id;
+}
+
+module.exports = {
+  searchEmails, sendEmail, sendEmailFrom, createDraft, createDraftReply,
+  getEmailBody, getThread, markAsRead,
+  searchEmailsFrom, getThreadFrom, markAsReadFrom, createDraftReplyFrom,
+  getSignature,
+};

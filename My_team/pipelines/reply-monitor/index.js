@@ -9,6 +9,10 @@ const {
   createDraftReply,
   getThread,
   markAsRead,
+  searchEmailsFrom,
+  getThreadFrom,
+  markAsReadFrom,
+  createDraftReplyFrom,
 } = require("../../shared/pipeline-gmail");
 const { appendRow, readRows, updateCells } = require("../../shared/pipeline-sheets");
 const config = require("../../shared/pipeline-config");
@@ -358,7 +362,7 @@ async function classify(threadContext) {
 // ---------------------------------------------------------------------------
 // Handlers per classification
 // ---------------------------------------------------------------------------
-async function handleInterested(email, name, firstName, senderEmail, company, body, threadContext, threadMessages) {
+async function handleInterested(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps) {
   const now = logger.ts();
   let draftCreated = false;
   let draftBody = "";
@@ -368,7 +372,7 @@ async function handleInterested(email, name, firstName, senderEmail, company, bo
   // Generate AI response using full thread context
   try {
     draftBody = await callClaude(INTERESTED_PROMPT, `${threadContext}\n\nWrite a reply to ${firstName}'s interested response:`, 300);
-    await createDraftReply(
+    await gmailOps.createDraftReply(
       email.threadId,
       email.id,
       senderEmail,
@@ -453,11 +457,11 @@ async function handleInterested(email, name, firstName, senderEmail, company, bo
   }
 
   await updateProspectChannelStatus(senderEmail, "email");
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → INTERESTED → Draft created, Alert sent, Stage: ${stage}`);
 }
 
-async function handleObjection(email, name, firstName, senderEmail, company, body, threadContext, threadMessages) {
+async function handleObjection(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps) {
   const now = logger.ts();
   let draftCreated = false;
   let draftBody = "";
@@ -467,7 +471,7 @@ async function handleObjection(email, name, firstName, senderEmail, company, bod
   // Generate objection response with Claude using full thread
   try {
     draftBody = await callClaude(OBJECTION_PROMPT, `${threadContext}\n\nHandle ${firstName}'s objection naturally:`, 300);
-    await createDraftReply(
+    await gmailOps.createDraftReply(
       email.threadId,
       email.id,
       senderEmail,
@@ -536,11 +540,11 @@ async function handleObjection(email, name, firstName, senderEmail, company, bod
   }
 
   await updateProspectChannelStatus(senderEmail, "email");
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → OBJECTION → ${draftCreated ? "Draft created" : "Draft failed"}, Alert sent, Stage: ${stage}`);
 }
 
-async function handleNotInterested(email, name, senderEmail) {
+async function handleNotInterested(email, name, senderEmail, gmailOps) {
   try {
     await appendRow("Replies", [logger.ts(), name, senderEmail, "Not Interested", "Logged", email.threadId]);
   } catch (err) {
@@ -548,11 +552,11 @@ async function handleNotInterested(email, name, senderEmail) {
   }
 
   await updateProspectChannelStatus(senderEmail, "email");
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → NOT_INTERESTED → Logged`);
 }
 
-async function handleQuestion(email, name, firstName, senderEmail, company, body, threadContext, threadMessages) {
+async function handleQuestion(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps) {
   const now = logger.ts();
   let draftCreated = false;
   let draftBody = "";
@@ -562,7 +566,7 @@ async function handleQuestion(email, name, firstName, senderEmail, company, body
   // Generate answer with Claude using full thread context
   try {
     draftBody = await callClaude(QUESTION_PROMPT, `${threadContext}\n\nAnswer ${firstName}'s question clearly and helpfully:`, 300);
-    await createDraftReply(
+    await gmailOps.createDraftReply(
       email.threadId,
       email.id,
       senderEmail,
@@ -647,11 +651,11 @@ async function handleQuestion(email, name, firstName, senderEmail, company, body
   }
 
   await updateProspectChannelStatus(senderEmail, "email");
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → QUESTION → ${draftCreated ? "Draft created" : "Draft failed"}, Alert sent, Stage: ${stage}`);
 }
 
-async function handleOutOfOffice(email, name, senderEmail) {
+async function handleOutOfOffice(email, name, senderEmail, gmailOps) {
   try {
     await appendRow("Replies", [
       logger.ts(),
@@ -666,18 +670,18 @@ async function handleOutOfOffice(email, name, senderEmail) {
     logger.error(`Sheets log failed for ${senderEmail}: ${err.message}`);
   }
 
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → OUT_OF_OFFICE → Logged, follow-up ${addDays(7)}`);
 }
 
-async function handleOther(email, name, senderEmail) {
+async function handleOther(email, name, senderEmail, gmailOps) {
   try {
     await appendRow("Replies", [logger.ts(), name, senderEmail, "Other", "Logged", email.threadId]);
   } catch (err) {
     logger.error(`Sheets log failed for ${senderEmail}: ${err.message}`);
   }
 
-  await markAsRead(email.id);
+  await gmailOps.markAsRead(email.id);
   logger.info(`PROCESSED: ${senderEmail} → OTHER → Logged`);
 }
 
@@ -849,13 +853,25 @@ async function processEmail(email) {
   const { name, email: senderEmail } = parseSender(email.from);
   const firstName = name.split(" ")[0];
   const company = guessCompany(senderEmail);
+  const sourceInbox = email.sourceInbox || "primary";
 
-  if (TEST_MODE) console.logger.info(`  Processing: "${email.subject}" from ${name} <${senderEmail}>`);
+  // Create inbox-aware closures for this email's source inbox
+  const inboxGetThread = sourceInbox === "primary"
+    ? (tid) => getThread(tid)
+    : (tid) => getThreadFrom(sourceInbox, tid);
+  const inboxMarkAsRead = sourceInbox === "primary"
+    ? (mid) => markAsRead(mid)
+    : (mid) => markAsReadFrom(sourceInbox, mid);
+  const inboxCreateDraftReply = sourceInbox === "primary"
+    ? (tid, mid, to, subj, body) => createDraftReply(tid, mid, to, subj, body)
+    : (tid, mid, to, subj, body) => createDraftReplyFrom(sourceInbox, tid, mid, to, subj, body);
+
+  if (TEST_MODE) console.logger.info(`  Processing [${sourceInbox}]: "${email.subject}" from ${name} <${senderEmail}>`);
 
   // Fetch full thread history
   let threadMessages;
   try {
-    threadMessages = await withRetry(() => getThread(email.threadId), "getThread");
+    threadMessages = await withRetry(() => inboxGetThread(email.threadId), "getThread");
     if (TEST_MODE) console.logger.info(`  Thread: ${threadMessages.length} email(s) in conversation`);
   } catch (err) {
     logger.error(`Thread fetch failed for ${email.threadId}: ${err.message}`);
@@ -863,8 +879,6 @@ async function processEmail(email) {
   }
 
   // Thread validation: skip emails where we never sent the original outreach
-  // Real prospect replies are in threads that contain at least one email FROM us.
-  // Apollo warmup emails are standalone conversations we never initiated.
   const ourAddresses = [
     config.gmailUserEmail,
     config.gmailUserEmail2,
@@ -879,7 +893,7 @@ async function processEmail(email) {
   if (!threadHasOurEmail) {
     logger.info(`WARMUP SKIP: ${senderEmail} — thread ${email.threadId} has no outbound email from us (likely Apollo warmup)`);
     if (TEST_MODE) console.logger.info(`  WARMUP SKIP: No outbound email from us in thread — likely Apollo warmup`);
-    await markAsRead(email.id);
+    await inboxMarkAsRead(email.id);
     return;
   }
 
@@ -898,7 +912,7 @@ async function processEmail(email) {
     logger.error(`Classification failed for ${senderEmail}: ${err.message}`);
     if (TEST_MODE) console.logger.info(`  Classification: FAILED — ${err.message}`);
     await sendRawAlert(name, senderEmail, company, email.subject, body);
-    await markAsRead(email.id);
+    await inboxMarkAsRead(email.id);
     if (TEST_MODE) console.logger.info(`  Action taken: Raw alert sent to ${ALERT_EMAIL}, marked as read`);
     logger.info(`PROCESSED: ${senderEmail} → CLASSIFY_FAILED → Raw alert sent`);
     return;
@@ -906,68 +920,95 @@ async function processEmail(email) {
 
   if (TEST_MODE) console.logger.info(`  Classification: ${classification}`);
 
+  // Pass inbox-aware functions to handlers
+  const gmailOps = { createDraftReply: inboxCreateDraftReply, markAsRead: inboxMarkAsRead };
+
   switch (classification) {
     case "INTERESTED":
-      await handleInterested(email, name, firstName, senderEmail, company, body, threadContext, threadMessages);
+      await handleInterested(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Alert sent, draft reply created, logged to Hot Leads sheet`);
       break;
     case "OBJECTION":
-      await handleObjection(email, name, firstName, senderEmail, company, body, threadContext, threadMessages);
+      await handleObjection(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Objection draft created, alert sent, logged to Hot Leads sheet`);
       break;
     case "NOT_INTERESTED":
-      await handleNotInterested(email, name, senderEmail);
+      await handleNotInterested(email, name, senderEmail, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Logged to Replies sheet, marked as read`);
       break;
     case "QUESTION":
-      await handleQuestion(email, name, firstName, senderEmail, company, body, threadContext, threadMessages);
+      await handleQuestion(email, name, firstName, senderEmail, company, body, threadContext, threadMessages, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Claude draft created, alert sent, logged to Hot Leads sheet`);
       break;
     case "OUT_OF_OFFICE":
-      await handleOutOfOffice(email, name, senderEmail);
+      await handleOutOfOffice(email, name, senderEmail, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Logged to Replies sheet with follow-up ${addDays(7)}, marked as read`);
       break;
     default:
-      await handleOther(email, name, senderEmail);
+      await handleOther(email, name, senderEmail, gmailOps);
       if (TEST_MODE) console.logger.info(`  Action taken: Logged to Replies sheet, marked as read`);
       break;
   }
 }
 
 async function checkEmails() {
-  if (TEST_MODE) console.logger.info("Searching for unread emails...");
-  logger.info("Checking for new replies...");
+  if (TEST_MODE) console.logger.info("Searching for unread emails across all inboxes...");
+  logger.info("Checking for new replies across all inboxes...");
 
-  let emails;
-  try {
-    emails = await withRetry(() => searchEmails(SEARCH_QUERY), "searchEmails");
-  } catch (err) {
-    logger.error(`Gmail search failed after retry: ${err.message}`);
-    if (TEST_MODE) console.logger.info(`ERROR: Gmail search failed — ${err.message}`);
+  // Build inbox list — always include primary, add secondary/tertiary if configured
+  const inboxes = [{ name: "primary", search: searchEmails, markRead: markAsRead }];
+  if (config.gmailUserEmail2 && config.gmailRefreshToken2) {
+    inboxes.push({
+      name: "secondary",
+      search: (q) => searchEmailsFrom("secondary", q),
+      markRead: (id) => markAsReadFrom("secondary", id),
+    });
+  }
+  if (config.gmailUserEmail3 && config.gmailRefreshToken3) {
+    inboxes.push({
+      name: "tertiary",
+      search: (q) => searchEmailsFrom("tertiary", q),
+      markRead: (id) => markAsReadFrom("tertiary", id),
+    });
+  }
+
+  // Collect emails from all inboxes
+  const allEmails = [];
+  for (const inbox of inboxes) {
+    try {
+      const emails = await withRetry(() => inbox.search(SEARCH_QUERY), `searchEmails(${inbox.name})`);
+      for (const e of emails) {
+        e.sourceInbox = inbox.name;
+      }
+      allEmails.push(...emails);
+      logger.info(`[${inbox.name}] Found ${emails.length} unread email(s)`);
+    } catch (err) {
+      logger.error(`Gmail search failed for ${inbox.name}: ${err.message}`);
+    }
+  }
+
+  if (TEST_MODE) console.logger.info(`Found ${allEmails.length} unread email(s) across ${inboxes.length} inbox(es)`);
+
+  if (allEmails.length === 0) {
+    logger.info("No new replies found across any inbox.");
     return;
   }
 
-  if (TEST_MODE) console.logger.info(`Found ${emails.length} unread email(s)`);
-
-  if (emails.length === 0) {
-    logger.info("No new replies found.");
-    return;
-  }
-
-  logger.info(`Found ${emails.length} unread email(s). Processing...`);
+  logger.info(`Found ${allEmails.length} unread email(s) total. Processing...`);
 
   // Pre-filter warmup/system/noise emails
-  const realEmails = emails.filter((e) => !isWarmupOrSystemEmail(e));
-  const skippedCount = emails.length - realEmails.length;
+  const realEmails = allEmails.filter((e) => !isWarmupOrSystemEmail(e));
+  const skippedCount = allEmails.length - realEmails.length;
 
   if (skippedCount > 0) {
     logger.info(`Filtered ${skippedCount} warmup/system emails - processing ${realEmails.length} real prospect replies`);
     if (TEST_MODE) console.logger.info(`  Filtered ${skippedCount} warmup/system, ${realEmails.length} real email(s)`);
-    // Mark skipped emails as read
-    for (const email of emails) {
+    // Mark skipped emails as read in their respective inboxes
+    for (const email of allEmails) {
       if (!realEmails.includes(email)) {
-        if (TEST_MODE) console.logger.info(`  SKIPPED: "${email.subject}" from ${email.from}`);
-        await markAsRead(email.id);
+        if (TEST_MODE) console.logger.info(`  SKIPPED [${email.sourceInbox}]: "${email.subject}" from ${email.from}`);
+        const inboxDef = inboxes.find(ib => ib.name === email.sourceInbox);
+        if (inboxDef) await inboxDef.markRead(email.id);
       }
     }
   }
@@ -981,7 +1022,7 @@ async function checkEmails() {
     }
   }
 
-  logger.info(`Finished processing ${realEmails.length} email(s) (${emails.length - realEmails.length} warmup skipped).`);
+  logger.info(`Finished processing ${realEmails.length} email(s) (${skippedCount} warmup skipped) across ${inboxes.length} inbox(es).`);
 
   // Check for 48h follow-ups after processing new emails
   await checkFollowUps();
@@ -1123,7 +1164,10 @@ if (FILTER_TEST_MODE) {
     process.exit(1);
   });
 } else {
-  logger.info("Reply Monitor started — checking hello@receptflow.com every 5 minutes");
+  const monitoredInboxes = [config.gmailUserEmail];
+  if (config.gmailUserEmail2 && config.gmailRefreshToken2) monitoredInboxes.push(config.gmailUserEmail2);
+  if (config.gmailUserEmail3 && config.gmailRefreshToken3) monitoredInboxes.push(config.gmailUserEmail3);
+  logger.info(`Reply Monitor started — checking ${monitoredInboxes.join(" + ")} every 5 minutes`);
   checkEmails();
   cron.schedule("*/5 * * * *", checkEmails);
 }
