@@ -5,6 +5,7 @@ const axios = require("axios");
 const { callClaude } = require("../../shared/pipeline-claude");
 const { sendEmail } = require("../../shared/pipeline-gmail");
 const { appendRow, readRows } = require("../../shared/pipeline-sheets");
+const { KEYWORDS, MONEY_PAGES, BLOG_POSTS } = require("../../shared/seo-keywords");
 
 // ---------------------------------------------------------------------------
 // Config
@@ -24,124 +25,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO; // e.g. "Ahmadusama1122/receptflow"
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 if (!fs.existsSync(BLOG_DIR)) fs.mkdirSync(BLOG_DIR, { recursive: true });
 
-// ---------------------------------------------------------------------------
-// Keywords
-// ---------------------------------------------------------------------------
-const KEYWORDS = [
-  // --- Existing (already written) ---
-  "AI receptionist for dental practices Australia",
-  "AI receptionist Melbourne small business",
-  "After-hours answering service Australia",
-  "AI phone answering service small business",
-  "AI receptionist vs answering service Australia",
-  "Best AI receptionist for law firms Australia",
-  "AI receptionist for physiotherapy clinics",
-  "How to never miss a business call Australia",
-  // --- Niche verticals ---
-  "AI receptionist for trade businesses Australia",
-  "AI receptionist for real estate agents Australia",
-  "AI receptionist for accounting firms Australia",
-  "AI receptionist for veterinary clinics Australia",
-  "AI receptionist for beauty salons Australia",
-  "AI receptionist for medical clinics Australia",
-  // --- Pain-point / long-tail ---
-  "How much do missed calls cost small businesses Australia",
-  "Best virtual receptionist for after hours Australia",
-  "Automated appointment booking for small business",
-  "AI answering service vs virtual receptionist comparison",
-  "How to reduce missed calls small business Australia",
-  "24/7 phone answering for trades and services",
-  // --- Competitor / comparison ---
-  "Best AI receptionist software Australia 2026",
-  "Cheap virtual receptionist alternatives Australia",
-  // --- Location ---
-  "AI receptionist Sydney small business",
-  "AI receptionist Brisbane small business",
-  "AI receptionist Perth small business",
-
-  // ===== LOCALIZED KEYWORD CLUSTERS (City × Niche) =====
-
-  // --- Melbourne clusters ---
-  "AI receptionist for dentists Melbourne",
-  "after hours answering service Melbourne",
-  "AI receptionist for law firms Melbourne",
-  "virtual receptionist for trades Melbourne",
-  "AI phone answering for real estate Melbourne",
-  "after hours call handling Melbourne small business",
-
-  // --- Sydney clusters ---
-  "AI receptionist for dentists Sydney",
-  "after hours answering service Sydney",
-  "AI receptionist for law firms Sydney",
-  "virtual receptionist for trades Sydney",
-  "AI phone answering for real estate Sydney",
-  "after hours call handling Sydney small business",
-
-  // --- Brisbane clusters ---
-  "AI receptionist for dentists Brisbane",
-  "after hours answering service Brisbane",
-  "virtual receptionist for small business Brisbane",
-
-  // --- Perth clusters ---
-  "AI receptionist for dentists Perth",
-  "after hours answering service Perth",
-  "virtual receptionist for small business Perth",
-
-  // --- Adelaide clusters ---
-  "AI receptionist Adelaide small business",
-  "after hours answering service Adelaide",
-  "virtual receptionist Adelaide",
-
-  // --- Gold Coast clusters ---
-  "AI receptionist Gold Coast small business",
-  "after hours answering service Gold Coast",
-
-  // --- Niche × pain point clusters ---
-  "how dentists lose patients from missed calls",
-  "after hours lead capture for law firms Australia",
-  "why plumbers need an AI receptionist",
-  "how real estate agents miss leads after hours",
-  "AI receptionist for med spas and beauty clinics",
-  "electrician missed call cost Australia",
-  "cleaning business lead capture after hours",
-  "landscaper phone answering service Australia",
-  "physiotherapy clinic after hours booking",
-  "accounting firm lead capture after hours",
-
-  // --- Seasonal / trend clusters ---
-  "best AI tools for small business Australia 2026",
-  "how to automate customer service small business",
-  "AI chatbot vs AI receptionist for small business",
-  "cost of missed calls for Australian businesses",
-  "how to get more Google reviews for your business",
-  "local SEO tips for small business Australia 2026",
-
-  // ===== COMPETITOR COMPARISON PAGES =====
-
-  // --- "Alternative to" pages (high buyer intent) ---
-  "Smith.ai alternative for small business",
-  "OfficeHQ alternative Australia",
-  "Ruby Receptionist alternative Australia",
-  "Hey Jodie alternative AI receptionist",
-  "Goodcall alternative AI phone answering",
-  "My AI Front Desk alternative",
-
-  // --- "vs" comparison pages ---
-  "ReceptFlow vs Smith.ai comparison",
-  "ReceptFlow vs Hey Jodie AI receptionist",
-  "ReceptFlow vs OfficeHQ virtual receptionist",
-  "ReceptFlow vs TransferToAI comparison",
-  "ReceptFlow vs Rosie AI receptionist",
-  "ReceptFlow vs Dialzara comparison",
-  "AI receptionist vs human receptionist cost Australia",
-  "AI receptionist vs virtual receptionist service Australia",
-
-  // --- "Best" listicle pages ---
-  "best AI receptionist for dentists Australia 2026",
-  "best AI receptionist for tradies Australia 2026",
-  "best virtual receptionist for law firms Australia 2026",
-  "top AI phone answering services Australia 2026",
-];
+// Keywords imported from shared/seo-keywords.js
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -261,31 +145,56 @@ async function findNextKeyword() {
 }
 
 // ---------------------------------------------------------------------------
+// Dynamic internal links (from shared module instead of static array)
+// ---------------------------------------------------------------------------
+function getInternalLinks() {
+  const links = [];
+  // Blog posts
+  for (const bp of BLOG_POSTS) {
+    links.push({ slug: bp.slug, title: bp.title, isMatrix: false });
+  }
+  // Money pages (matrix pages)
+  for (const mp of MONEY_PAGES) {
+    if (mp.type === "matrix") {
+      links.push({ slug: mp.slug, title: mp.title, isMatrix: true });
+    }
+  }
+  return links;
+}
+
+// ---------------------------------------------------------------------------
+// Fetch competitor intelligence from SERP Analysis sheet
+// ---------------------------------------------------------------------------
+const SERP_SHEET = "SERP Analysis";
+
+async function fetchCompetitorIntelligence(keyword) {
+  try {
+    const rows = await readRows(SERP_SHEET);
+    for (const row of rows) {
+      const kw = (row[0] || "").trim().toLowerCase();
+      if (kw === keyword.toLowerCase()) {
+        const topicsJson = row[5] || "[]";
+        const briefJson = row[6] || "{}";
+        const paaJson = row[7] || "[]";
+        const avgWordCount = parseInt(row[4] || "0", 10);
+
+        let topics = [], brief = {}, paa = [];
+        try { topics = JSON.parse(topicsJson); } catch {}
+        try { brief = JSON.parse(briefJson); } catch {}
+        try { paa = JSON.parse(paaJson); } catch {}
+
+        return { topics, brief, paa, avgWordCount, hasData: true };
+      }
+    }
+  } catch (err) {
+    logError(`SERP sheet read failed: ${err.message}`);
+  }
+  return { topics: [], brief: {}, paa: [], avgWordCount: 0, hasData: false };
+}
+
+// ---------------------------------------------------------------------------
 // Step 2 — Generate article
 // ---------------------------------------------------------------------------
-// Existing blog posts for internal linking
-const INTERNAL_LINKS = [
-  { slug: "ai-receptionist-for-dental-practices-australia", title: "AI Receptionist for Dental Practices" },
-  { slug: "ai-receptionist-for-physiotherapy-clinics", title: "AI Receptionist for Physiotherapy Clinics" },
-  { slug: "best-ai-receptionist-for-law-firms-australia", title: "Best AI Receptionist for Law Firms" },
-  { slug: "ai-receptionist-for-trade-businesses", title: "AI Receptionist for Trade Businesses" },
-  { slug: "ai-receptionist-for-real-estate-agents", title: "AI Receptionist for Real Estate Agents" },
-  { slug: "ai-receptionist-vs-answering-service-australia", title: "AI Receptionist vs Answering Service" },
-  { slug: "ai-phone-answering-service-small-business", title: "AI Phone Answering Service for Small Business" },
-  { slug: "after-hours-answering-service-australia", title: "After-Hours Answering Service Australia" },
-  { slug: "ai-receptionist-melbourne-small-business", title: "AI Receptionist Melbourne Small Business" },
-  { slug: "how-to-capture-leads-from-your-website-after-hours", title: "How to Capture Leads After Hours" },
-  { slug: "ai-receptionist-vs-human-receptionist", title: "AI Receptionist vs Human Receptionist" },
-  // Niche landing pages (zipper matrix links)
-  { slug: "ai-receptionist-for-dentists-in-melbourne", title: "AI Receptionist for Dentists in Melbourne", isMatrix: true },
-  { slug: "ai-receptionist-for-dentists-in-sydney", title: "AI Receptionist for Dentists in Sydney", isMatrix: true },
-  { slug: "ai-receptionist-for-law-firms-in-melbourne", title: "AI Receptionist for Law Firms in Melbourne", isMatrix: true },
-  { slug: "ai-receptionist-for-law-firms-in-sydney", title: "AI Receptionist for Law Firms in Sydney", isMatrix: true },
-  { slug: "ai-receptionist-for-med-spas-in-melbourne", title: "AI Receptionist for Med Spas in Melbourne", isMatrix: true },
-  { slug: "ai-receptionist-for-plumbers-in-melbourne", title: "AI Receptionist for Plumbers in Melbourne", isMatrix: true },
-  { slug: "ai-receptionist-for-electricians-in-sydney", title: "AI Receptionist for Electricians in Sydney", isMatrix: true },
-  { slug: "ai-receptionist-for-real-estate-agents-in-brisbane", title: "AI Receptionist for Real Estate Agents in Brisbane", isMatrix: true },
-];
 
 async function generateArticle(keyword) {
   // Detect if keyword is a competitor comparison page
@@ -297,18 +206,20 @@ async function generateArticle(keyword) {
     return await generateCompetitorArticle(keyword, isCompetitorPage);
   }
 
+  // Fetch competitor intelligence from SERP Analysis sheet
+  const intel = await fetchCompetitorIntelligence(keyword);
+
   // Detect if keyword is city-specific
   const cityNames = ["Melbourne", "Sydney", "Brisbane", "Perth", "Adelaide", "Gold Coast", "Auckland", "Wellington"];
   const detectedCity = cityNames.find((c) => keyword.toLowerCase().includes(c.toLowerCase()));
 
-  // Pick 2-3 related internal links (exclude the current keyword's slug)
-  // For localized keywords, prefer matrix page links
+  // Pick 2-3 related internal links (dynamic from shared module)
+  const INTERNAL_LINKS = getInternalLinks();
   const currentSlug = slugify(keyword);
   const preferMatrix = !!detectedCity;
   const relatedLinks = INTERNAL_LINKS
     .filter((l) => l.slug !== currentSlug)
     .sort((a, b) => {
-      // If localized keyword, prefer matrix links; otherwise prefer blog links
       if (preferMatrix) return (b.isMatrix ? 1 : 0) - (a.isMatrix ? 1 : 0);
       return (a.isMatrix ? 1 : 0) - (b.isMatrix ? 1 : 0);
     })
@@ -330,29 +241,57 @@ async function generateArticle(keyword) {
 - Link to the city-specific landing page where relevant`
     : `Mention Melbourne or another specific Australian city at least twice.`;
 
+  // Build competitor intelligence instructions (if SERP data exists)
+  let competitorInstruction = "";
+  if (intel.hasData) {
+    const targetWordCount = Math.round(intel.avgWordCount * 1.1) || 2000;
+    const topicsList = intel.topics.length > 0
+      ? `\nCOMPETITOR TOPICS TO COVER (you MUST address all of these + more):\n${intel.topics.map(t => `- ${t}`).join("\n")}`
+      : "";
+    const paaSection = intel.paa.length > 0
+      ? `\nPEOPLE ALSO ASK questions to target as H2/H3 sections:\n${intel.paa.map(q => `- ${q}`).join("\n")}`
+      : "";
+    const briefText = intel.brief.contentBrief ? `\nContent strategy: ${intel.brief.contentBrief}` : "";
+    const titleSuggestion = intel.brief.recommendedTitle ? `\nSuggested H1 (adapt as needed): "${intel.brief.recommendedTitle}"` : "";
+
+    competitorInstruction = `
+COMPETITOR INTELLIGENCE (from SERP analysis):
+- Average competitor word count: ${intel.avgWordCount} — target ${targetWordCount}+ words
+${titleSuggestion}${topicsList}${paaSection}${briefText}
+`;
+  }
+
   const systemPrompt = `You are an expert SEO content writer for ReceptFlow — an AI receptionist for small businesses in Australia and New Zealand that answers calls 24/7, qualifies leads, and books appointments into Google Calendar.
 
-Write a 1,800-2,000 word SEO blog post targeting this keyword: "${keyword}"
-
+Write a ${intel.hasData ? Math.round(intel.avgWordCount * 1.1) || 2000 : "1,800-2,000"} word SEO blog post targeting this keyword: "${keyword}"
+${competitorInstruction}
 SEO rules:
 - Use the exact keyword in the H1 title, first paragraph, one H2, and naturally 3-4 more times throughout
 - Use related long-tail variations naturally (e.g. "after-hours phone answering", "virtual receptionist", "automated call handling")
 - Keep paragraphs short (2-4 sentences max) for readability and featured snippet eligibility
 - Use Australian spelling throughout (recognise, organisation, colour, etc.)
 
+GEO OPTIMIZATION (for ChatGPT/Perplexity/AI Overviews):
+- Answer the primary query in the FIRST 200 words (direct, factual, citable)
+- Use question-formatted H2 headers where natural (e.g. "How Does an AI Receptionist Handle Calls?")
+- Include 3-5 specific, citable statistics with context (dollar amounts, percentages, study references)
+- Write in clear, authoritative language that AI models can confidently quote
+- Add "Written by Usama Ahmad, Founder of ReceptFlow" at the very end
+
 ${cityInstruction}
 
 Structure:
 - H1: compelling, click-worthy title that includes the keyword (under 60 characters if possible)
-- Introduction (150 words): open with a specific pain point scenario, include the keyword, mention the 60% after-hours traffic stat
+- Introduction (150 words): answer the core question immediately, then expand with pain point scenario
 - 5 x H2 sections (250 words each): practical, actionable content with specific Australian examples and real numbers
-- FAQ section: 5 questions formatted as **bold question** followed by answer paragraph — write questions people actually search for
+- FAQ section: 6-8 questions formatted as **bold question** followed by concise 2-3 sentence answer — write questions people actually search for
 - Internal links: naturally link to 2-3 of these related articles within the body text where relevant:
 ${relatedLinks}
 - CTA at end: "Start your free 7-day trial at receptflow.com — live in 15 minutes"
+- Author line: "Written by Usama Ahmad, Founder of ReceptFlow"
 
 Brand voice: helpful, direct, conversational. Write like you're explaining to a mate who owns a small business — not like a marketing brochure. No fluff, no filler.
-Include at least 2 specific dollar amounts or statistics to build credibility.
+Include at least 3 specific dollar amounts or statistics to build credibility.
 Format: markdown. Do NOT include frontmatter — just the article starting with the H1.`;
 
   return await callClaude(systemPrompt, `Write the blog post now for keyword: "${keyword}"`, 5000);
@@ -364,7 +303,8 @@ Format: markdown. Do NOT include frontmatter — just the article starting with 
 async function generateCompetitorArticle(keyword, isCompetitorPage) {
   const slug = slugify(keyword);
 
-  // Pick 2-3 internal links for cross-linking
+  // Pick 2-3 internal links for cross-linking (dynamic)
+  const INTERNAL_LINKS = getInternalLinks();
   const relatedLinks = INTERNAL_LINKS
     .filter((l) => l.slug !== slug)
     .sort(() => Math.random() - 0.5)
@@ -488,14 +428,30 @@ async function generateSEO() {
     // Continue anyway — better to risk a duplicate than miss a post
   }
 
-  // Step 2 — Generate article
-  if (TEST_MODE) console.log("\nStep 2: Generating 1500-word article...");
+  // Step 2 — Generate article (competitor-aware + GEO optimized)
+  if (TEST_MODE) console.log("\nStep 2: Generating article (competitor-aware + GEO)...");
   let article;
+  let topicScore = "";
   try {
     article = await generateArticle(keyword);
+    const wordCount = article.split(/\s+/).length;
     if (TEST_MODE) {
-      const wordCount = article.split(/\s+/).length;
       console.log(`  Article generated ✓ (${wordCount} words)`);
+    }
+
+    // Topic coverage scoring (if SERP data exists)
+    try {
+      const intel = await fetchCompetitorIntelligence(keyword);
+      if (intel.hasData && intel.topics.length > 0) {
+        const articleLower = article.toLowerCase();
+        const covered = intel.topics.filter(t => articleLower.includes(t.toLowerCase()));
+        const score = Math.round((covered.length / intel.topics.length) * 10);
+        topicScore = `${score}/10 (${covered.length}/${intel.topics.length} topics)`;
+        log(`Topic coverage: ${topicScore}`);
+        if (TEST_MODE) console.log(`  Topic coverage: ${topicScore}`);
+      }
+    } catch (err) {
+      logError(`Topic scoring failed: ${err.message}`);
     }
   } catch (err) {
     logError(`Article generation failed: ${err.message}`);
@@ -593,7 +549,7 @@ async function generateSEO() {
   // Step 5 — Update Sheets
   if (TEST_MODE) console.log("\nStep 5: Updating SEO Keywords sheet...");
   try {
-    await appendRow(SHEET_TAB, [keyword, "Written", today, relativePath]);
+    await appendRow(SHEET_TAB, [keyword, "Written", today, relativePath, topicScore]);
     if (TEST_MODE) console.log("  Sheet updated ✓");
   } catch (err) {
     logError(`Sheets update failed: ${err.message}`);

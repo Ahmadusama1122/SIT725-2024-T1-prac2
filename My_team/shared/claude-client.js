@@ -4,8 +4,47 @@ const { logExecution } = require('./database');
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
+// ── Daily Token Budget ──────────────────────────────────────────────────
+// Hard cap on total tokens per day across all agents.
+// Default: 2M tokens/day (~$6-10/day on Sonnet). Override via env var.
+const DAILY_TOKEN_BUDGET = parseInt(process.env.DAILY_TOKEN_BUDGET || '2000000', 10);
+let dailyTokensUsed = 0;
+let dailyBudgetResetAt = Date.now() + 24 * 60 * 60 * 1000;
+let budgetExceededLogged = false;
+
+function checkAndUpdateBudget(tokensUsed) {
+  const now = Date.now();
+  if (now > dailyBudgetResetAt) {
+    dailyTokensUsed = 0;
+    dailyBudgetResetAt = now + 24 * 60 * 60 * 1000;
+    budgetExceededLogged = false;
+  }
+  dailyTokensUsed += tokensUsed;
+  return dailyTokensUsed;
+}
+
+function isBudgetExceeded() {
+  const now = Date.now();
+  if (now > dailyBudgetResetAt) {
+    dailyTokensUsed = 0;
+    dailyBudgetResetAt = now + 24 * 60 * 60 * 1000;
+    budgetExceededLogged = false;
+    return false;
+  }
+  return dailyTokensUsed >= DAILY_TOKEN_BUDGET;
+}
+
 async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6', maxTokens = 4096, taskId, agent, tools, onToolCall }) {
   const startTime = Date.now();
+
+  // Check daily budget before making API call
+  if (isBudgetExceeded()) {
+    if (!budgetExceededLogged) {
+      console.error(`[BUDGET] Daily token budget exceeded (${dailyTokensUsed.toLocaleString()}/${DAILY_TOKEN_BUDGET.toLocaleString()}). Blocking API calls until reset.`);
+      budgetExceededLogged = true;
+    }
+    throw new Error(`Daily token budget exceeded (${dailyTokensUsed.toLocaleString()}/${DAILY_TOKEN_BUDGET.toLocaleString()}). Resets in ${Math.round((dailyBudgetResetAt - Date.now()) / 3600000)}h.`);
+  }
 
   try {
     const params = {
@@ -24,7 +63,7 @@ async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6
 
     // Tool-use loop: keep going while Claude wants to call tools
     let loopCount = 0;
-    const MAX_TOOL_LOOPS = 5;
+    const MAX_TOOL_LOOPS = 10;
 
     while (response.stop_reason === 'tool_use' && onToolCall && loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
@@ -100,6 +139,12 @@ async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6
       });
     }
 
+    // Track against daily budget
+    const dailyTotal = checkAndUpdateBudget(totalTokens);
+    if (dailyTotal > DAILY_TOKEN_BUDGET * 0.8 && dailyTotal - totalTokens <= DAILY_TOKEN_BUDGET * 0.8) {
+      console.warn(`[BUDGET] Warning: 80% of daily token budget used (${dailyTotal.toLocaleString()}/${DAILY_TOKEN_BUDGET.toLocaleString()})`);
+    }
+
     return { text, tokensUsed: totalTokens, durationMs, model, toolCallCount: loopCount };
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -117,4 +162,15 @@ async function askClaude({ systemPrompt, userMessage, model = 'claude-sonnet-4-6
   }
 }
 
-module.exports = { askClaude };
+function getDailyTokenUsage() {
+  if (Date.now() > dailyBudgetResetAt) {
+    return { used: 0, budget: DAILY_TOKEN_BUDGET, pct: 0 };
+  }
+  return {
+    used: dailyTokensUsed,
+    budget: DAILY_TOKEN_BUDGET,
+    pct: Math.round((dailyTokensUsed / DAILY_TOKEN_BUDGET) * 100),
+  };
+}
+
+module.exports = { askClaude, getDailyTokenUsage };

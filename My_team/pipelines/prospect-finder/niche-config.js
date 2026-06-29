@@ -248,7 +248,7 @@ const INBOX_LIMITS = {
   tertiary:  100,
 };
 
-const TARGET_PER_NICHE = 25;
+const TARGET_PER_NICHE = 50;
 
 module.exports = {
   DAY_NICHES,

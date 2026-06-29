@@ -130,9 +130,33 @@ app.get('/api/tasks', (req, res) => {
   }
 });
 
-// API endpoint to trigger agent tasks directly (for testing/internal use)
+// API endpoint to trigger agent tasks directly (authenticated)
 app.use(express.json());
+
+const API_RUN_SECRET = process.env.API_RUN_SECRET || '';
+const apiRunLimiter = {};  // IP → { count, resetAt }
+
 app.post('/api/run', async (req, res) => {
+  // Auth: require API_RUN_SECRET in Authorization header
+  if (!API_RUN_SECRET) {
+    return res.status(503).json({ error: 'API_RUN_SECRET not configured — endpoint disabled' });
+  }
+  const auth = req.headers.authorization || '';
+  if (auth !== `Bearer ${API_RUN_SECRET}`) {
+    return res.status(401).json({ error: 'Invalid or missing API key' });
+  }
+
+  // Rate limit: 10 requests per minute per IP
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  if (!apiRunLimiter[ip] || apiRunLimiter[ip].resetAt < now) {
+    apiRunLimiter[ip] = { count: 0, resetAt: now + 60000 };
+  }
+  apiRunLimiter[ip].count++;
+  if (apiRunLimiter[ip].count > 10) {
+    return res.status(429).json({ error: 'Rate limit exceeded — max 10 requests/minute' });
+  }
+
   const { agent, message, project } = req.body;
   if (!agent || !message) {
     return res.status(400).json({ error: 'Required: agent, message' });
@@ -169,7 +193,11 @@ async function start() {
     console.log('[Discord] Initialized');
 
     // Listen for commands in #commands channel
-    onCommand(async (message) => {
+    const discordRateLimits = {};  // userId → { count, resetAt }
+    const DISCORD_RATE_LIMIT = 3;  // max commands per minute per user
+    const DISCORD_RATE_WINDOW = 60000;  // 1 minute
+
+    onCommand(async (message, discordMessage) => {
       console.log(`[Discord Command] ${message}`);
       try {
         // Handle empty messages (MESSAGE_CONTENT intent may be disabled)
@@ -177,6 +205,21 @@ async function start() {
           console.warn('[Discord] Empty message received — MESSAGE_CONTENT intent may be disabled in Developer Portal');
           await notify.commands('I received your message but it was empty. Please enable **MESSAGE CONTENT INTENT** in the Discord Developer Portal → Bot settings.');
           return;
+        }
+
+        // Per-user rate limiting (skip for help/status commands)
+        const lower = message.trim().toLowerCase();
+        if (lower !== 'help' && lower !== 'status' && discordMessage?.author?.id) {
+          const userId = discordMessage.author.id;
+          const now = Date.now();
+          if (!discordRateLimits[userId] || discordRateLimits[userId].resetAt < now) {
+            discordRateLimits[userId] = { count: 0, resetAt: now + DISCORD_RATE_WINDOW };
+          }
+          discordRateLimits[userId].count++;
+          if (discordRateLimits[userId].count > DISCORD_RATE_LIMIT) {
+            await notify.commands(`Rate limit: max ${DISCORD_RATE_LIMIT} commands/minute. Please wait.`);
+            return;
+          }
         }
 
         // Help command

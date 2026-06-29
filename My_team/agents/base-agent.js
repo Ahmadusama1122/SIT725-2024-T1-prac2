@@ -387,6 +387,103 @@ const TOOL_REGISTRY = {
       return getDisabledAgents();
     },
   },
+
+  // ── GitHub Code Reading Tools ─────────────────────────────────────────
+
+  get_file_contents: {
+    description: 'Read the contents of a file from a GitHub repository. Returns the full file content. Use this to inspect source code for security analysis.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: 'Repository name (e.g. "receptflow")' },
+        path: { type: 'string', description: 'File path within the repo (e.g. "backend/app/main.py")' },
+        branch: { type: 'string', description: 'Branch name (default: main)' },
+      },
+      required: ['repo', 'path'],
+    },
+    execute: async (input) => {
+      const { getOctokit } = require('../shared/github-client');
+      const { GITHUB_OWNER } = require('../shared/config');
+      const ok = await getOctokit();
+      if (!ok) return { error: 'GitHub not configured' };
+      try {
+        const { data } = await ok.repos.getContent({
+          owner: GITHUB_OWNER,
+          repo: input.repo,
+          path: input.path,
+          ref: input.branch || 'main',
+        });
+        if (data.type !== 'file') return { error: `${input.path} is a directory, not a file. Use list_repo_files instead.` };
+        const content = Buffer.from(data.content, 'base64').toString('utf-8');
+        return { path: input.path, size: data.size, content };
+      } catch (error) {
+        return { error: `Failed to read ${input.path}: ${error.message}` };
+      }
+    },
+  },
+
+  list_repo_files: {
+    description: 'List files and directories in a GitHub repository path. Use this to explore the repo structure before reading specific files.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: 'Repository name (e.g. "receptflow")' },
+        path: { type: 'string', description: 'Directory path within the repo (e.g. "backend/app/api/routes"). Use empty string for root.' },
+        branch: { type: 'string', description: 'Branch name (default: main)' },
+      },
+      required: ['repo'],
+    },
+    execute: async (input) => {
+      const { getOctokit } = require('../shared/github-client');
+      const { GITHUB_OWNER } = require('../shared/config');
+      const ok = await getOctokit();
+      if (!ok) return { error: 'GitHub not configured' };
+      try {
+        const { data } = await ok.repos.getContent({
+          owner: GITHUB_OWNER,
+          repo: input.repo,
+          path: input.path || '',
+          ref: input.branch || 'main',
+        });
+        if (!Array.isArray(data)) return { error: `${input.path} is a file, not a directory. Use get_file_contents instead.` };
+        const entries = data.map(item => ({ name: item.name, type: item.type, path: item.path, size: item.size || 0 }));
+        return { path: input.path || '/', count: entries.length, entries };
+      } catch (error) {
+        return { error: `Failed to list ${input.path || '/'}: ${error.message}` };
+      }
+    },
+  },
+
+  search_repo_code: {
+    description: 'Search for code patterns in a GitHub repository. Use this to find specific vulnerabilities, patterns, or keywords across the codebase.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: 'Repository name (e.g. "receptflow")' },
+        query: { type: 'string', description: 'Code search query (e.g. "dangerouslySetInnerHTML", "raw SQL", "exec(", "eval(")' },
+      },
+      required: ['repo', 'query'],
+    },
+    execute: async (input) => {
+      const { getOctokit } = require('../shared/github-client');
+      const { GITHUB_OWNER } = require('../shared/config');
+      const ok = await getOctokit();
+      if (!ok) return { error: 'GitHub not configured' };
+      try {
+        const { data } = await ok.search.code({
+          q: `${input.query} repo:${GITHUB_OWNER}/${input.repo}`,
+          per_page: 15,
+        });
+        const results = data.items.map(item => ({
+          file: item.path,
+          matches: item.text_matches ? item.text_matches.map(m => m.fragment) : [],
+        }));
+        return { totalCount: data.total_count, results };
+      } catch (error) {
+        return { error: `Search failed: ${error.message}` };
+      }
+    },
+  },
 };
 
 // ── Per-Agent Tool Whitelists ───────────────────────────────────────────
@@ -401,7 +498,7 @@ const AGENT_TOOLS = {
   'data-analyst':         ['read_sheet', 'search_emails', 'send_email', 'create_email_draft'],
   'customer-support':     ['send_email', 'create_email_draft', 'search_emails', 'read_email', 'read_sheet', 'append_sheet_row'],
   'devops-engineer':      ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet'],
-  'security-engineer':    ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet'],
+  'security-engineer':    ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet', 'get_file_contents', 'list_repo_files', 'search_repo_code'],
   'fullstack-developer':  ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet'],
   'qa-engineer':          ['create_github_issue', 'get_github_issues', 'send_email', 'read_sheet'],
   'product-strategist':   ['read_sheet', 'search_people', 'send_email', 'create_email_draft', 'search_emails'],
@@ -459,7 +556,7 @@ function createAgent(agentName, discordChannel) {
       // Use cheaper model for scheduled runs to reduce API costs
       const isScheduled = task.source === 'scheduled' || (task.title && task.title.startsWith('Scheduled run:'));
       const model = isScheduled ? 'claude-haiku-4-5' : 'claude-sonnet-4-6';
-      const maxTokens = isScheduled ? 1024 : 4096;
+      const maxTokens = isScheduled ? 1024 : 8192;
 
       // Call Claude with tool-use support
       const response = await askClaude({

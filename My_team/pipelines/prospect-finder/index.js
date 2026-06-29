@@ -213,24 +213,35 @@ async function findProspects() {
   // Process each niche and collect prospects
   const searchDedup = new Set(contacted);
   const allProspects = [];
+  const hasSecondary = !!(config.gmailUserEmail2 && config.gmailRefreshToken2);
   const hasTertiary = !!(config.gmailUserEmail3 && config.gmailRefreshToken3);
   const inboxCounts = { primary: alreadySentPrimary, secondary: alreadySentSecondary, tertiary: alreadySentTertiary };
   for (let i = 0; i < niches.length; i++) {
     const niche = niches[i];
-    const inbox = i <= 1 ? "primary" : i <= 3 ? "secondary" : (hasTertiary ? "tertiary" : "secondary");
-    logger.info(`--- Processing niche ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}, inbox: ${inbox}) ---`);
-    if (TEST_MODE) console.log(`\n=== NICHE ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}, inbox: ${inbox}) ===`);
+    logger.info(`--- Processing niche ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}) ---`);
+    if (TEST_MODE) console.log(`\n=== NICHE ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}) ===`);
     const nicheProspects = await processNiche(niche, today, searchDedup, targeting, TARGET_PER_NICHE, country);
 
-    // Assign inbox and enforce daily limits
+    // Round-robin inbox assignment — distribute evenly across all active inboxes
+    const activeInboxes = ["primary"];
+    if (hasSecondary) activeInboxes.push("secondary");
+    if (hasTertiary) activeInboxes.push("tertiary");
+
     for (const p of nicheProspects) {
-      if (inboxCounts[inbox] < INBOX_LIMITS[inbox]) {
-        p.inbox = inbox;
-        inboxCounts[inbox]++;
-      } else {
+      // Pick the inbox with the lowest count that still has capacity
+      let assigned = false;
+      const sorted = [...activeInboxes].sort((a, b) => inboxCounts[a] - inboxCounts[b]);
+      for (const inbox of sorted) {
+        if (inboxCounts[inbox] < INBOX_LIMITS[inbox]) {
+          p.inbox = inbox;
+          inboxCounts[inbox]++;
+          assigned = true;
+          break;
+        }
+      }
+      if (!assigned) {
         p.inbox = null;
-        const addr = inbox === "secondary" ? (config.gmailUserEmail2 || "outreach@") : config.gmailUserEmail;
-        logger.info(`Daily limit reached for ${addr} (${inbox}) — ${INBOX_LIMITS[inbox]} emails — stopping`);
+        logger.info(`All inboxes at daily limit — cannot send to ${p.email}`);
       }
     }
 
@@ -341,16 +352,16 @@ async function findProspects() {
   const primaryAddr = config.gmailUserEmail;
   const secondaryAddr = config.gmailUserEmail2 || config.gmailUserEmail;
   const tertiaryAddr = config.gmailUserEmail3 || "NOT CONFIGURED";
-  const nicheLabel = niches.map((n, i) => {
-    const ib = i <= 1 ? primaryAddr : i <= 3 ? secondaryAddr : tertiaryAddr;
-    return `${n} (${ib})`;
-  }).join(" + ");
+  const nicheLabel = niches.join(" + ");
 
   const summaryParts = [];
 
   for (let i = 0; i < niches.length; i++) {
     const niche = niches[i];
-    const inboxNote = i <= 1 ? primaryAddr : i <= 3 ? secondaryAddr : tertiaryAddr;
+    const nicheProspectsForNote = allProspects.filter((p) => p.niche === niche);
+    const inboxBreak = {};
+    for (const p of nicheProspectsForNote) { inboxBreak[p.inbox || "unassigned"] = (inboxBreak[p.inbox || "unassigned"] || 0) + 1; }
+    const inboxNote = Object.entries(inboxBreak).map(([k,v]) => `${k}:${v}`).join(", ") || "none";
     const nicheProspects = allProspects.filter((p) => p.niche === niche);
     const nicheRows = nicheProspects.map((p, j) => {
       const preview = p.emailBody ? p.emailBody.split("\n").slice(0, 2).join("\n   ") : "(no body)";

@@ -36,9 +36,7 @@ if (config.gmailRefreshToken3 && config.gmailUserEmail3) {
 }
 
 function getSignature(inbox) {
-  if (inbox === "tertiary") {
-    return "\n\n--\nUsama Ahmad\nTrustRise Digital\nwww.trustrisedigital.com";
-  }
+  // contact@receptflow.com is a receptflow domain — use ReceptFlow signature
   return "\n\n--\nUsama Ahmad\nFounder, ReceptFlow\nwww.receptflow.com";
 }
 
@@ -163,6 +161,9 @@ async function sendEmailFrom(inbox, to, subject, body) {
     fromEmail = config.gmailUserEmail2;
     tokenEnvVar = "GMAIL_REFRESH_TOKEN_2";
   } else {
+    if (inbox !== "primary") {
+      console.warn(`[WARN] sendEmailFrom: Requested ${inbox} but client not available (gmail2=${!!gmail2}, gmail3=${!!gmail3}). Falling back to primary.`);
+    }
     client = gmail;
     fromEmail = config.gmailUserEmail;
     tokenEnvVar = "GMAIL_REFRESH_TOKEN";
