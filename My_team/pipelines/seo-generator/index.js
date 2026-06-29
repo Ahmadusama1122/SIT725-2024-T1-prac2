@@ -557,6 +557,24 @@ async function generateSEO() {
     if (TEST_MODE) console.log(`  GitHub FAILED: ${err.message}`);
   }
 
+  // Step 3c — Ping IndexNow (Bing/Yandex) to crawl the new page
+  if (TEST_MODE) console.log("\nStep 3c: Pinging IndexNow...");
+  try {
+    const indexNowKey = "64caf491615247ea8052d8068a532fcb";
+    const pageUrl = `https://www.receptflow.com/blog/${slug}`;
+    await axios.post("https://api.indexnow.org/indexnow", {
+      host: "www.receptflow.com",
+      key: indexNowKey,
+      keyLocation: `https://www.receptflow.com/${indexNowKey}.txt`,
+      urlList: [pageUrl],
+    }, { headers: { "Content-Type": "application/json" }, timeout: 10000 });
+    log(`IndexNow pinged for ${pageUrl}`);
+    if (TEST_MODE) console.log("  IndexNow pinged ✓");
+  } catch (err) {
+    logError(`IndexNow ping failed: ${err.message}`);
+    if (TEST_MODE) console.log(`  IndexNow FAILED: ${err.message}`);
+  }
+
   // Step 4 — Email article
   if (TEST_MODE) console.log("\nStep 4: Emailing article...");
   try {
