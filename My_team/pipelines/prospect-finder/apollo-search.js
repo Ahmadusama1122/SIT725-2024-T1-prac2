@@ -124,43 +124,58 @@ async function searchApollo(niche, contactedEmails, locations, targetFresh, logg
         // No website = quality score penalty (not a hard reject).
         if (!websiteUrl) filteredNoWebsite++;
 
-        // Use search data directly — no enrichment call needed (saves 1 credit per prospect)
-        const email = c.email || "";
-        if (!email) continue;
+        // Enrich via /people/match to get actual email, full name, website, LinkedIn
+        try {
+          if (callBudget.used >= callBudget.max) break;
+          const enrichRes = await axios.post(
+            `${APOLLO_BASE}/people/match`,
+            { id: c.id },
+            { headers }
+          );
+          callBudget.used++;
 
-        if (contactedEmails.has(email.toLowerCase())) {
-          if (testMode) console.log(`  SKIP already contacted: ${email}`);
-          continue;
+          const p = enrichRes.data.person;
+          if (p && p.email) {
+            if (contactedEmails.has(p.email.toLowerCase())) {
+              if (testMode) console.log(`  SKIP already contacted: ${p.email}`);
+              continue;
+            }
+
+            const enrichedCompany = p.organization?.name || companyName;
+            const enrichedEmployees = p.organization?.estimated_num_employees || employeeCount;
+            const linkedinUrl = p.linkedin_url || "";
+            const enrichedWebsite = p.organization?.website_url || websiteUrl;
+            const emailStatus = p.email_status || c.email_status || "";
+
+            const prospect = {
+              first_name: p.first_name || "",
+              name: [p.first_name, p.last_name].filter(Boolean).join(" "),
+              email: p.email,
+              company: enrichedCompany,
+              city: p.city || p.organization?.city || "",
+              title: p.title || "",
+              linkedinUrl,
+              websiteUrl: enrichedWebsite,
+              emailStatus,
+              employeeCount: enrichedEmployees,
+            };
+
+            const score = calculateQualityScore(prospect);
+            prospect.qualityScore = score;
+
+            if (score < 6) {
+              if (testMode) console.log(`  FILTERED low quality [${score}/10]: ${prospect.name} at ${enrichedCompany}`);
+              filteredLowQuality++;
+              continue;
+            }
+
+            if (testMode) console.log(`  [${score}/10] ${prospect.name} at ${enrichedCompany} (${enrichedEmployees} emp, ${emailStatus})`);
+
+            prospects.push(prospect);
+          }
+        } catch (err) {
+          logger.error(`Enrich failed for ${c.first_name} (${c.id}): ${err.message}`);
         }
-
-        const linkedinUrl = c.linkedin_url || "";
-        const emailStatus = c.email_status || "";
-
-        const prospect = {
-          first_name: c.first_name || "",
-          name: [c.first_name, c.last_name].filter(Boolean).join(" "),
-          email,
-          company: companyName,
-          city: c.city || c.organization?.city || "",
-          title: c.title || "",
-          linkedinUrl,
-          websiteUrl,
-          emailStatus,
-          employeeCount,
-        };
-
-        const score = calculateQualityScore(prospect);
-        prospect.qualityScore = score;
-
-        if (score < 6) {
-          if (testMode) console.log(`  FILTERED low quality [${score}/10]: ${prospect.name} at ${companyName}`);
-          filteredLowQuality++;
-          continue;
-        }
-
-        if (testMode) console.log(`  [${score}/10] ${prospect.name} at ${companyName} (${employeeCount} emp, ${emailStatus})`);
-
-        prospects.push(prospect);
       }
 
       page++;
@@ -174,8 +189,8 @@ async function searchApollo(niche, contactedEmails, locations, targetFresh, logg
 
 // Max API calls per niche — prevents one niche from burning the quota for all others.
 // 6 niches share the Apollo rate limit, so each gets a fair slice.
-// With enrichment removed, each search page = 1 credit (was 1 + 1 per prospect before).
-const MAX_CALLS_PER_NICHE = 15;
+// Each search page = 1 credit + 1 credit per enrichment call.
+const MAX_CALLS_PER_NICHE = 80;
 
 async function searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, testMode) {
   const { targets, primaryCity, country } = targeting;

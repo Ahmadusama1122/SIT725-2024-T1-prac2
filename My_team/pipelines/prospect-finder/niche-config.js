@@ -52,18 +52,18 @@ const NICHE_FALLBACKS = {
 
 const COUNTRY_ROTATION = {
   1: "Australia",
-  2: "New Zealand",
+  2: "Australia",
   3: "United Kingdom",
   4: "Australia",
-  5: "New Zealand",
+  5: "Australia",
 };
 
 const DAY_PRIMARY_CITY = {
   1: "Sydney, New South Wales",
-  2: "Auckland",
+  2: "Brisbane, Queensland",
   3: "London",
   4: "Melbourne, Victoria",
-  5: "Wellington",
+  5: "Perth, Western Australia",
 };
 
 const AU_FALLBACK_CITIES = [

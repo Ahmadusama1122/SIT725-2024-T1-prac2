@@ -388,7 +388,7 @@ async function run() {
 }
 
 // ---------------------------------------------------------------------------
-// Cron — Monday and Thursday at 9am AEST (11pm UTC Sunday/Wednesday)
+// Cron — Monday at 9am AEST (11pm UTC Sunday) — one post per week
 // ---------------------------------------------------------------------------
 if (!TEST_MODE) {
   // Monday 9am AEST = Sunday 11pm UTC
@@ -397,13 +397,7 @@ if (!TEST_MODE) {
     run().catch((err) => logError(`Cron run failed: ${err.message}`));
   });
 
-  // Thursday 9am AEST = Wednesday 11pm UTC
-  cron.schedule("0 23 * * 3", () => {
-    log("Cron triggered — Thursday 9am AEST post");
-    run().catch((err) => logError(`Cron run failed: ${err.message}`));
-  });
-
-  console.log("LinkedIn Generator — scheduled: Monday + Thursday 9am AEST");
+  console.log("LinkedIn Generator — scheduled: Monday 9am AEST (1 post/week)");
   console.log(`  Next topic: ${pickTopic().theme}`);
 } else {
   run().catch((err) => {
