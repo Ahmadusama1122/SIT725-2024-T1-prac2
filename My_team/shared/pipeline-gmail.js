@@ -36,8 +36,7 @@ if (config.gmailRefreshToken3 && config.gmailUserEmail3) {
 }
 
 function getSignature(inbox) {
-  // contact@receptflow.com is a receptflow domain — use ReceptFlow signature
-  return "\n\n--\nUsama Ahmad\nFounder, ReceptFlow\nwww.receptflow.com";
+  return "\n\nwww.receptflow.com";
 }
 
 /**
