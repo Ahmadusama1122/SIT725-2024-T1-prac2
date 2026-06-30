@@ -27,11 +27,11 @@ const AGENT_REGISTRY = {
     description: 'Social media posts, carousels, posting schedule',
   },
   'seo-analyst': {
-    keywords: ['seo', 'keyword', 'ranking', 'search', 'organic', 'backlink', 'on-page', 'serp'],
+    keywords: ['seo', 'keyword research', 'ranking', 'search ranking', 'organic traffic', 'backlink', 'on-page', 'serp'],
     description: 'SEO, keyword research, content strategy, ranking optimization',
   },
   'prospect-sender': {
-    keywords: ['send emails', 'send prospects', 'send outreach', 'prospect sender', 'blast emails', 'send 300', 'send 200', 'send 100', 'send emails now'],
+    keywords: ['send emails', 'send prospects', 'send outreach', 'prospect sender', 'prospect finder', 'blast emails', 'send 10', 'send 20', 'send 30', 'send 50', 'send 100', 'send 200', 'send 300', 'send emails now', 'google maps', 'scrape', 'web scraper', 'emails to'],
     description: 'On-demand outreach email sending with Apollo or web scraper fallback',
   },
   'sales-prospector': {
