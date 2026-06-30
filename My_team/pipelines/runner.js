@@ -7,7 +7,7 @@
 const PIPELINES = [
   // Sales Prospector domain
   { name: 'prospect-finder', agent: 'sales-prospector' },
-  { name: 'prospect-sender', agent: 'sales-prospector' },
+  { name: 'prospect-sender', agent: 'prospect-sender' },
   { name: 'review-monitor', agent: 'sales-prospector' },
   { name: 'apollo-monitor', agent: 'sales-prospector' },
 

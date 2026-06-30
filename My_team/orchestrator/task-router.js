@@ -30,6 +30,10 @@ const AGENT_REGISTRY = {
     keywords: ['seo', 'keyword', 'ranking', 'search', 'organic', 'backlink', 'on-page', 'serp'],
     description: 'SEO, keyword research, content strategy, ranking optimization',
   },
+  'prospect-sender': {
+    keywords: ['send emails', 'send prospects', 'send outreach', 'prospect sender', 'blast emails', 'send 300', 'send 200', 'send 100', 'send emails now'],
+    description: 'On-demand outreach email sending with Apollo or web scraper fallback',
+  },
   'sales-prospector': {
     keywords: ['prospect', 'lead', 'apollo', 'find contacts', 'icp', 'lead gen', 'enrich', 'target list', 'find clinic', 'find business', 'sales'],
     description: 'Lead generation, prospecting, Apollo searches, lead scoring',

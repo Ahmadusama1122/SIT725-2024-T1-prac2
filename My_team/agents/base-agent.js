@@ -491,6 +491,7 @@ const TOOL_REGISTRY = {
 
 const AGENT_TOOLS = {
   'sales-prospector':     ['search_people', 'read_sheet', 'append_sheet_row', 'send_email', 'create_email_draft', 'search_emails'],
+  'prospect-sender':      ['search_people', 'read_sheet', 'append_sheet_row', 'send_email', 'create_email_draft', 'search_emails'],
   'outreach-manager':     ['send_email', 'create_email_draft', 'search_emails', 'read_email', 'read_sheet', 'append_sheet_row', 'send_linkedin_connection', 'send_linkedin_message'],
   'content-creator':      ['send_email', 'create_email_draft', 'post_linkedin', 'generate_image', 'schedule_social_post', 'create_github_issue', 'read_sheet'],
   'social-media-manager': ['post_linkedin', 'generate_image', 'schedule_social_post', 'read_sheet', 'append_sheet_row'],
