@@ -306,6 +306,8 @@ async function run() {
   let postText;
   try {
     postText = await generatePost(topic);
+    // Append website link to every post
+    postText = postText.trimEnd() + "\n\nwww.receptflow.com";
     log(`Generated post: ${postText.length} chars`);
   } catch (err) {
     logError(`Post generation failed: ${err.message}`);
