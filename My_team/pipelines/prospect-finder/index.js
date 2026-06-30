@@ -23,6 +23,12 @@ const logger = createLogger("prospect-finder");
 
 const SHEET_TAB = SHEETS.PROSPECTS;
 
+// Env var overrides (set by prospect-sender agent)
+const OVERRIDE_SOURCE = process.env.PROSPECT_SOURCE || "auto";
+const OVERRIDE_COUNT = process.env.PROSPECT_COUNT ? parseInt(process.env.PROSPECT_COUNT, 10) : null;
+const OVERRIDE_NICHES = process.env.PROSPECT_NICHES || null;
+const OVERRIDE_CITY = process.env.PROSPECT_CITY || null;
+
 // Startup diagnostics
 console.log(`Mode: ${TEST_MODE ? "TEST" : "PRODUCTION"}`);
 console.log(`Primary inbox: ${config.gmailUserEmail} (limit: ${INBOX_LIMITS.primary}/day)`);
@@ -38,11 +44,12 @@ function fmtDate(d) {
 // ---------------------------------------------------------------------------
 async function processNiche(niche, today, contactedEmails, targeting, targetFresh = 5, country = "Australia") {
   const countryConf = COUNTRY_CONFIG[country] || COUNTRY_CONFIG["Australia"];
-  // Step 2 — Apollo search with self-healing fallbacks
-  if (TEST_MODE) console.log(`\nStep 2 [${niche}]: Searching Apollo for ${targetFresh} prospects...`);
+  // Step 2 — Search for prospects (Apollo or web scraper based on source)
+  const sourceLabel = OVERRIDE_SOURCE !== "auto" ? ` [source: ${OVERRIDE_SOURCE}]` : "";
+  if (TEST_MODE) console.log(`\nStep 2 [${niche}]: Searching for ${targetFresh} prospects${sourceLabel}...`);
   let prospects;
   try {
-    prospects = await searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, TEST_MODE);
+    prospects = await searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, TEST_MODE, OVERRIDE_SOURCE);
     if (TEST_MODE) console.log(`  Found ${prospects.length} fresh prospect(s)`);
   } catch (err) {
     logger.error(`Apollo search failed for ${niche}: ${err.message}`);
@@ -118,12 +125,22 @@ async function processNiche(niche, today, contactedEmails, targeting, targetFres
 async function findProspects() {
   if (TEST_MODE) console.log("=== Prospect Finder — TEST MODE ===\n");
 
-  // Step 1 — Determine niches and Australian city for today
+  // Step 1 — Determine niches and Australian city for today (with env var overrides)
   const targeting = getTodayTargeting();
+
+  // Apply city override if set by prospect-sender
+  if (OVERRIDE_CITY) {
+    targeting.targets[0].city = OVERRIDE_CITY;
+    targeting.targets[0].locations = [`${OVERRIDE_CITY}, ${targeting.country}`];
+    targeting.primaryCity = OVERRIDE_CITY;
+  }
+
   const country = targeting.country || "Australia";
   const countryConf = COUNTRY_CONFIG[country] || COUNTRY_CONFIG["Australia"];
   const dayOfWeek = targeting.dayOfWeek;
-  const niches = DAY_NICHES[dayOfWeek] || ["dental", "law"];
+  const niches = OVERRIDE_NICHES
+    ? OVERRIDE_NICHES.split(",").map((n) => n.trim().toLowerCase())
+    : (DAY_NICHES[dayOfWeek] || ["dental", "law"]);
   const today = fmtDate(new Date());
   const todayName = new Date().toLocaleDateString("en-AU", { weekday: "long", timeZone: "Australia/Melbourne" });
 
@@ -216,11 +233,16 @@ async function findProspects() {
   const hasSecondary = !!(config.gmailUserEmail2 && config.gmailRefreshToken2);
   const hasTertiary = !!(config.gmailUserEmail3 && config.gmailRefreshToken3);
   const inboxCounts = { primary: alreadySentPrimary, secondary: alreadySentSecondary, tertiary: alreadySentTertiary };
+  // If count override is set, divide evenly across niches
+  const effectiveTargetPerNiche = OVERRIDE_COUNT
+    ? Math.ceil(OVERRIDE_COUNT / niches.length)
+    : TARGET_PER_NICHE;
+
   for (let i = 0; i < niches.length; i++) {
     const niche = niches[i];
-    logger.info(`--- Processing niche ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}) ---`);
-    if (TEST_MODE) console.log(`\n=== NICHE ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${TARGET_PER_NICHE}) ===`);
-    const nicheProspects = await processNiche(niche, today, searchDedup, targeting, TARGET_PER_NICHE, country);
+    logger.info(`--- Processing niche ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${effectiveTargetPerNiche}) ---`);
+    if (TEST_MODE) console.log(`\n=== NICHE ${i + 1}/${niches.length}: ${niche.toUpperCase()} (target: ${effectiveTargetPerNiche}) ===`);
+    const nicheProspects = await processNiche(niche, today, searchDedup, targeting, effectiveTargetPerNiche, country);
 
     // Round-robin inbox assignment — distribute evenly across all active inboxes
     const activeInboxes = ["primary"];
@@ -365,7 +387,8 @@ async function findProspects() {
     const nicheProspects = allProspects.filter((p) => p.niche === niche);
     const nicheRows = nicheProspects.map((p, j) => {
       const preview = p.emailBody ? p.emailBody.split("\n").slice(0, 2).join("\n   ") : "(no body)";
-      return `${j + 1}. [${p.qualityScore || 0}/10] ${p.name} — ${p.company} (${p.city}, ${p.country})\n   ${p.email} [via ${p.inbox || "unassigned"}] | ${p.employeeCount || "?"} emp | ${p.websiteUrl ? "has website" : "no website"}\n   Subject: ${p.subject || "(none)"}\n   ${preview}\n   Email: ${p.emailStatus || "No"}`;
+      const sourceTag = p.source === "web-scraper" ? " [WEB]" : "";
+      return `${j + 1}. [${p.qualityScore || 0}/10]${sourceTag} ${p.name} — ${p.company} (${p.city}, ${p.country})\n   ${p.email} [via ${p.inbox || "unassigned"}] | ${p.employeeCount || "?"} emp | ${p.websiteUrl ? "has website" : "no website"}\n   Subject: ${p.subject || "(none)"}\n   ${preview}\n   Email: ${p.emailStatus || "No"}`;
     });
     summaryParts.push(
       `=== ${niche.toUpperCase()} (${nicheProspects.length}) — ${inboxNote} ===`,

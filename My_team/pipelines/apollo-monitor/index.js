@@ -280,4 +280,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { run: runApolloMonitor };
+module.exports = { run: runApolloMonitor, fetchCreditBalance, loadCreditsHistory };

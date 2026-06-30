@@ -14,6 +14,11 @@ const {
   COUNTRY_FALLBACK_CITIES,
 } = require("./niche-config");
 const { calculateQualityScore } = require("./quality-score");
+const { fetchCreditBalance, loadCreditsHistory } = require("../apollo-monitor");
+const { searchWebScraper } = require("./web-scraper");
+
+// Below this threshold, auto-switch to web scraper instead of Apollo
+const CREDIT_THRESHOLD = 100;
 
 function buildApolloLocations(locationStr, country) {
   return [`${locationStr}, ${country}`];
@@ -192,8 +197,69 @@ async function searchApollo(niche, contactedEmails, locations, targetFresh, logg
 // Each search page = 1 credit + 1 credit per enrichment call.
 const MAX_CALLS_PER_NICHE = 80;
 
-async function searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, testMode) {
+/**
+ * Check whether Apollo has enough email reveal credits remaining.
+ * Reads local cache first (instant), falls back to live API call.
+ * @returns {Promise<{available: boolean, balance: number, source: string}>}
+ */
+async function checkCreditsAvailable(logger) {
+  // Try local cache first (no API call)
+  try {
+    const history = loadCreditsHistory();
+    if (history.balance !== null) {
+      const available = history.balance >= CREDIT_THRESHOLD;
+      logger.info(`Apollo credits (cached): ${history.balance} remaining — ${available ? "OK" : "LOW, switching to web scraper"}`);
+      return { available, balance: history.balance, source: "cached" };
+    }
+  } catch (err) {
+    logger.info(`Credit cache read failed: ${err.message}`);
+  }
+
+  // Fall back to live API call
+  try {
+    const info = await fetchCreditBalance();
+    const available = info.balance >= CREDIT_THRESHOLD;
+    logger.info(`Apollo credits (live): ${info.balance} remaining — ${available ? "OK" : "LOW, switching to web scraper"}`);
+    return { available, balance: info.balance, source: info.source };
+  } catch (err) {
+    logger.error(`Cannot determine Apollo credits: ${err.message} — defaulting to Apollo`);
+    return { available: true, balance: -1, source: "unknown" };
+  }
+}
+
+async function searchWithFallbacks(niche, contactedEmails, targeting, targetFresh, logger, testMode, forceSource = "auto") {
   const { targets, primaryCity, country } = targeting;
+
+  // Determine source: "apollo", "web", or "auto" (check credits)
+  let useWebScraper = false;
+  if (forceSource === "web") {
+    useWebScraper = true;
+    logger.info(`[${niche}] Source forced to web scraper`);
+  } else if (forceSource !== "apollo") {
+    // auto — check credits
+    const credits = await checkCreditsAvailable(logger);
+    if (!credits.available) {
+      useWebScraper = true;
+      logger.info(`[${niche}] Apollo credits low (${credits.balance}) — routing to web scraper`);
+    }
+  }
+
+  // Web scraper path
+  if (useWebScraper) {
+    const city = targets[0].city;
+    logger.info(`[${niche}] [WEB] Searching ${city}, ${country} via web scraper (target: ${targetFresh})...`);
+    const prospects = await searchWebScraper(niche, contactedEmails, city, country, targetFresh, logger, testMode);
+    for (const p of prospects) {
+      p.country = country;
+      p.qualityScore = calculateQualityScore(p);
+    }
+    // Filter by quality threshold
+    const qualified = prospects.filter((p) => p.qualityScore >= 6);
+    logger.info(`[${niche}] [WEB] Found ${prospects.length} prospects, ${qualified.length} passed quality threshold`);
+    return qualified;
+  }
+
+  // Apollo path (existing logic)
   const callBudget = { used: 0, max: MAX_CALLS_PER_NICHE };
 
   const primary = targets[0];

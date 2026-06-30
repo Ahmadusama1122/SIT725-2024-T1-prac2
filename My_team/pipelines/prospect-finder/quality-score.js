@@ -12,6 +12,7 @@ function calculateQualityScore(prospect) {
   if (titleLower.includes("owner") || titleLower.includes("founder")) score += 2;
   else if (titleLower.includes("principal") || titleLower.includes("director")) score += 1;
   if (prospect.emailStatus === "verified") score += 2;
+  else if (prospect.source === "web-scraper" && prospect.websiteUrl) score += 1;
   if (prospect.linkedinUrl) score += 1;
   return score;
 }

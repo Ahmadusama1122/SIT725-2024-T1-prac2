@@ -1,12 +1,13 @@
 /**
  * Pipeline Runner
- * Starts all 23 marketing pipeline systems.
+ * Starts all 24 marketing pipeline systems.
  * Each pipeline has its own internal cron schedule — this just imports them.
  */
 
 const PIPELINES = [
   // Sales Prospector domain
   { name: 'prospect-finder', agent: 'sales-prospector' },
+  { name: 'prospect-sender', agent: 'sales-prospector' },
   { name: 'review-monitor', agent: 'sales-prospector' },
   { name: 'apollo-monitor', agent: 'sales-prospector' },
 
