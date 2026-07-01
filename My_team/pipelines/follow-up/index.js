@@ -194,7 +194,7 @@ The prospect is a ${niche} business in ${countryRef}. They've received several e
 Rules:
 - 30-40 words max
 - Straightforward: "Is handling after-hours calls something worth fixing for ${company}?"
-- If yes: receptflow.com/register — free 7-day trial
+- If yes: see it in action at receptflow.com/video-demo or start free trial at receptflow.com/register
 - Not pushy, just clear
 - Subject line: 5 words or fewer
 - ${countryRef} spelling and tone
@@ -206,7 +206,7 @@ The prospect is a ${niche} business in ${countryRef}. This is the second-to-last
 Rules:
 - 30-40 words max
 - "Closing your file" soft urgency — you're about to stop following up
-- Mention free trial one final time: receptflow.com/register
+- Include demo link: receptflow.com/video-demo or free trial: receptflow.com/register
 - Not guilt-tripping, just honest
 - Subject line: 5 words or fewer
 - ${countryRef} spelling and tone

@@ -215,27 +215,27 @@ const TEMPLATES = [
   {
     subject: (name) => `quick question for ${name}`,
     body: (name, rating, reviews) =>
-      `Hi there,\n\nI noticed ${name} has ${rating} stars across ${reviews} reviews — clearly patients rate you highly.\n\nQuick question: how many calls does your front desk miss during appointments? We built an AI receptionist that picks up every call, books appointments, and answers patient enquiries 24/7.\n\nWorth a quick look?\n\nCheers,\nReceptFlow`,
+      `Hi there,\n\nI noticed ${name} has ${rating} stars across ${reviews} reviews — clearly patients rate you highly.\n\nQuick question: how many calls does your front desk miss during appointments? We built an AI receptionist that picks up every call, books appointments, and answers patient enquiries 24/7.\n\nSee it in action: www.receptflow.com/video-demo\n\nCheers,\nReceptFlow`,
   },
   {
     subject: (name) => `${name} — never miss a patient call`,
     body: (name, rating, reviews) =>
-      `Hi there,\n\nRunning a dental practice with ${reviews}+ Google reviews means your phones are probably ringing non-stop. But when your team is chairside, calls go to voicemail — and patients just ring the next clinic.\n\nWe built an AI receptionist that answers every call, books appointments into your calendar, and handles common enquiries. No missed patients, no extra staff.\n\nHappy to show you a 2-minute demo?\n\nCheers,\nReceptFlow`,
+      `Hi there,\n\nRunning a dental practice with ${reviews}+ Google reviews means your phones are probably ringing non-stop. But when your team is chairside, calls go to voicemail — and patients just ring the next clinic.\n\nWe built an AI receptionist that answers every call, books appointments into your calendar, and handles common enquiries. No missed patients, no extra staff.\n\nSee a 2-minute demo: www.receptflow.com/video-demo\n\nCheers,\nReceptFlow`,
   },
   {
     subject: (name) => `after-hours calls at ${name}`,
     body: (name, rating, reviews) =>
-      `Hi there,\n\nWith ${rating} stars and ${reviews} reviews, ${name} is clearly a go-to clinic in the area. But what happens when patients call after hours or during busy periods?\n\nOur AI receptionist answers calls 24/7, books appointments, and sends confirmations — so you never lose a patient to a missed call.\n\nWould a quick demo be useful?\n\nCheers,\nReceptFlow`,
+      `Hi there,\n\nWith ${rating} stars and ${reviews} reviews, ${name} is clearly a go-to clinic in the area. But what happens when patients call after hours or during busy periods?\n\nOur AI receptionist answers calls 24/7, books appointments, and sends confirmations — so you never lose a patient to a missed call.\n\nSee how it works: www.receptflow.com/video-demo\n\nCheers,\nReceptFlow`,
   },
   {
     subject: (name) => `filling ${name}'s appointment gaps`,
     body: (name, rating, reviews) =>
-      `Hi there,\n\nMost dental practices lose 20-30% of inbound calls during procedures. For a clinic with ${reviews} reviews like ${name}, that could be several new patients a week walking to competitors.\n\nWe built an AI phone receptionist that never misses a call — picks up instantly, books into your calendar, answers pricing questions.\n\nWorth 2 minutes of your time to see it?\n\nCheers,\nReceptFlow`,
+      `Hi there,\n\nMost dental practices lose 20-30% of inbound calls during procedures. For a clinic with ${reviews} reviews like ${name}, that could be several new patients a week walking to competitors.\n\nWe built an AI phone receptionist that never misses a call — picks up instantly, books into your calendar, answers pricing questions.\n\nWatch a 2-minute demo: www.receptflow.com/video-demo\n\nCheers,\nReceptFlow`,
   },
   {
     subject: (name) => `${name} — your after-hours receptionist`,
     body: (name, rating, reviews) =>
-      `Hi there,\n\nPatients don't just call between 9 and 5. After hours, weekends, lunch breaks — that's when ${name} could be losing new patient enquiries to voicemail.\n\nOur AI receptionist handles it all: answers calls, books appointments, sends confirmations. Works 24/7, no sick days.\n\nInterested in a quick look?\n\nCheers,\nReceptFlow`,
+      `Hi there,\n\nPatients don't just call between 9 and 5. After hours, weekends, lunch breaks — that's when ${name} could be losing new patient enquiries to voicemail.\n\nOur AI receptionist handles it all: answers calls, books appointments, sends confirmations. Works 24/7, no sick days.\n\nSee it in action: www.receptflow.com/video-demo\n\nCheers,\nReceptFlow`,
   },
 ];
 
