@@ -16,18 +16,18 @@ const TOOL_REGISTRY = {
         to: { type: 'string', description: 'Recipient email address' },
         subject: { type: 'string', description: 'Email subject line' },
         body: { type: 'string', description: 'Email body (plain text)' },
-        inbox: { type: 'string', enum: ['primary', 'secondary'], description: 'Which inbox to send from. Default: primary' },
+        inbox: { type: 'string', enum: ['primary', 'secondary', 'tertiary'], description: 'Which inbox to send from (primary=hello@, secondary=outreach@, tertiary=contact@). Default: primary' },
       },
       required: ['to', 'subject', 'body'],
     },
     execute: async (input) => {
       const gmail = require('../shared/pipeline-gmail');
-      if (input.inbox === 'secondary') {
-        await gmail.sendEmailFrom('secondary', input.to, input.subject, input.body);
+      if (input.inbox === 'secondary' || input.inbox === 'tertiary') {
+        await gmail.sendEmailFrom(input.inbox, input.to, input.subject, input.body);
       } else {
         await gmail.sendEmail(input.to, input.subject, input.body);
       }
-      return { success: true, message: `Email sent to ${input.to}` };
+      return { success: true, message: `Email sent to ${input.to} via ${input.inbox || 'primary'}` };
     },
   },
 
