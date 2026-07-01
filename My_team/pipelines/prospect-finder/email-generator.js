@@ -11,7 +11,7 @@ async function generateValueEmail(firstName, company, niche, city, title, countr
 
   const hasBlogPost = blogUrl.length > 0;
 
-  const systemPrompt = `You are writing a brief value-sharing email for Usama Ahmad, founder of ReceptFlow.
+  const systemPrompt = `You are writing a brief value-sharing email from ReceptFlow.
 The prospect is a ${niche} business in ${cityRef}, ${countryName}.
 
 DO NOT pitch anything. DO NOT mention ReceptFlow's product or features. This email shares a useful article or insight — nothing more.
@@ -24,7 +24,8 @@ Rules:
 - No CTA beyond "thought this might be useful" or "worth a read"
 - Tone: ${countryConf.tone} — like a fellow ${countryName === "Australia" ? "Aussie" : countryName === "New Zealand" ? "Kiwi" : "UK"} business owner, not a marketer
 - ${countryConf.spelling} spelling (e.g. enquiries, organisation, centre)
-- No sign-off (signature added automatically)
+- No sign-off with any personal name — the signature is added automatically
+- NEVER include a phone number
 - Never use: boost, streamline, revolutionise, game-changer, cutting-edge, innovative, solution
 
 ${titleRef ? `Additional context: The prospect's title is "${titleRef}". Reference their role naturally in the opening (e.g. "running a practice in ${cityRef}" or "managing the team at ${company}") to signal you've done your research.` : ""}`;

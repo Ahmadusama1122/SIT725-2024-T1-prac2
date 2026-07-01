@@ -219,7 +219,7 @@ async function findEmailFromWebsite(restaurantName) {
 // Email generation — restaurant-specific pitch about AI online booking
 // ---------------------------------------------------------------------------
 async function generateRestaurantEmail(restaurantName, cuisine, address, rating, reviews) {
-  const systemPrompt = `You are writing a brief cold email for Usama Ahmad, founder of ReceptFlow (an AI receptionist service).
+  const systemPrompt = `You are writing a brief cold email from ReceptFlow (an AI receptionist service).
 The prospect is a restaurant in Melbourne, Australia.
 
 The pitch: AI-powered online booking system that integrates with Google Calendar — customers can book tables 24/7 through chat/voice, bookings auto-sync to Google Calendar, no more missed reservations or phone tag.
@@ -232,7 +232,8 @@ Rules:
 - Position AI booking as: "customers book through your website 24/7 → auto-syncs to Google Calendar → you never miss a booking"
 - Tone: casual, direct — like a fellow Aussie business owner
 - Australian spelling (enquiries, organisation, centre)
-- No sign-off (signature added automatically)
+- No sign-off with any personal name — signature is added automatically (www.receptflow.com)
+- NEVER include a phone number in the email
 - No emojis
 - Never use: boost, streamline, revolutionise, game-changer, cutting-edge, innovative, solution
 - One clear CTA: offer a quick demo or call`;
