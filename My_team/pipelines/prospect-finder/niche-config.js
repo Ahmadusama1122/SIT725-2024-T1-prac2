@@ -248,6 +248,13 @@ const INBOX_LIMITS = {
   tertiary:  100,
 };
 
+// Follow-up emails get their own per-inbox budget (separate from prospect quota)
+const FOLLOW_UP_INBOX_LIMITS = {
+  primary:   50,
+  secondary: 50,
+  tertiary:  50,
+};
+
 const TARGET_PER_NICHE = 50;
 
 module.exports = {
@@ -270,5 +277,6 @@ module.exports = {
   NICHE_FEATURES,
   NICHE_BLOG_POSTS,
   INBOX_LIMITS,
+  FOLLOW_UP_INBOX_LIMITS,
   TARGET_PER_NICHE,
 };

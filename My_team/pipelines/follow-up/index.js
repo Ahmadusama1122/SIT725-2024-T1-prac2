@@ -5,6 +5,7 @@ const { callClaude } = require("../../shared/pipeline-claude");
 const { sendEmail, sendEmailFrom } = require("../../shared/pipeline-gmail");
 const { readRows, appendRow } = require("../../shared/pipeline-sheets");
 const config = require("../../shared/pipeline-config");
+const { FOLLOW_UP_INBOX_LIMITS } = require("../prospect-finder/niche-config");
 
 // ---------------------------------------------------------------------------
 // Config
@@ -327,7 +328,7 @@ async function runFollowUps() {
 
   // Find prospects who need follow-ups
   const toFollowUp = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" });
 
   for (const p of prospects) {
     if (!p.email || respondents.has(p.email)) continue;
@@ -379,11 +380,51 @@ async function runFollowUps() {
     return;
   }
 
-  // Cap at max daily
-  const batch = toFollowUp.slice(0, MAX_DAILY_FOLLOW_UPS);
-  if (toFollowUp.length > MAX_DAILY_FOLLOW_UPS) {
-    logger.info(`Capped follow-ups to ${MAX_DAILY_FOLLOW_UPS} (${toFollowUp.length} total due)`);
+  // --- PER-INBOX CAPACITY CHECK (don't exceed follow-up limits) ---
+  const aestToday = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" });
+  const inboxSent = { primary: 0, secondary: 0, tertiary: 0 };
+
+  // Count follow-ups already sent today per inbox from Follow-Ups sheet
+  try {
+    const fuRows = await readRows(FOLLOW_UP_TAB);
+    for (const row of fuRows.slice(1)) {
+      const dateStr = (row[0] || "").trim();
+      const status = (row[6] || "").trim();
+      if (status !== "Sent") continue;
+      const rowDate = new Date(dateStr);
+      const rowDateStr = !isNaN(rowDate.getTime())
+        ? rowDate.toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" })
+        : "";
+      if (rowDateStr === aestToday) {
+        // Follow-Ups sheet doesn't track inbox, estimate from prospect's sentVia
+        // This count is approximate — we'll enforce precisely during sends
+        inboxSent.primary++;
+      }
+    }
+  } catch (err) {
+    logger.error(`Failed to read follow-up history for cap check: ${err.message}`);
   }
+
+  const fuLimits = FOLLOW_UP_INBOX_LIMITS || { primary: 50, secondary: 50, tertiary: 50 };
+  const totalFollowUpCap = fuLimits.primary + fuLimits.secondary + fuLimits.tertiary;
+  const followUpRemaining = Math.max(0, totalFollowUpCap - (inboxSent.primary + inboxSent.secondary + inboxSent.tertiary));
+
+  logger.info(`Follow-up cap check: ${inboxSent.primary + inboxSent.secondary + inboxSent.tertiary} already sent today. Follow-up budget: ${followUpRemaining}/${totalFollowUpCap}`);
+
+  // Cap at max daily AND follow-up inbox budget
+  const effectiveCap = Math.min(MAX_DAILY_FOLLOW_UPS, toFollowUp.length, followUpRemaining);
+  const batch = toFollowUp.slice(0, effectiveCap);
+  if (toFollowUp.length > effectiveCap) {
+    logger.info(`Capped follow-ups to ${effectiveCap} (${toFollowUp.length} total due, budget: ${followUpRemaining})`);
+  }
+
+  if (batch.length === 0) {
+    logger.info("No follow-up budget remaining today. Skipping.");
+    return;
+  }
+
+  // Track per-inbox sends during this run
+  const inboxSentThisRun = { primary: 0, secondary: 0, tertiary: 0 };
 
   let sent = 0;
   let failed = 0;
@@ -428,6 +469,13 @@ async function runFollowUps() {
         ? config.gmailUserEmail
         : (config.gmailUserEmail2 || config.gmailUserEmail);
 
+    // Check per-inbox follow-up limit before sending
+    const inboxLimit = fuLimits[inbox] || 50;
+    if (inboxSentThisRun[inbox] >= inboxLimit) {
+      logger.info(`Follow-up inbox ${inbox} at capacity (${inboxLimit}), skipping ${p.email}`);
+      continue;
+    }
+
     if (TEST_MODE) {
       console.logger.info(`    Subject: ${subject}`);
       console.logger.info(`    Body: ${body}`);
@@ -436,6 +484,7 @@ async function runFollowUps() {
       try {
         await sendEmailFrom(inbox, p.email, subject, `Hi ${firstName},\n\n${body}`);
         sent++;
+        inboxSentThisRun[inbox]++;
         logger.info(`Follow-up ${p.touch} sent to ${p.email} via ${fromAddr} (${p.company})`);
 
         // 30 second delay between emails

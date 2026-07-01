@@ -9,7 +9,7 @@ const { generateValueEmail } = require("./email-generator");
 const {
   DAY_NICHES, NICHE_BLOG_POSTS,
   INBOX_LIMITS, TARGET_PER_NICHE,
-  COUNTRY_CONFIG,
+  COUNTRY_CONFIG, COUNTRY_CITIES,
 } = require("./niche-config");
 
 const REPLY_TAB = SHEETS.REPLIES;
@@ -36,7 +36,7 @@ console.log(`Secondary inbox: ${config.gmailUserEmail2 || "NOT CONFIGURED"} (lim
 console.log(`Tertiary inbox: ${config.gmailUserEmail3 || "NOT CONFIGURED"} (limit: ${INBOX_LIMITS.tertiary}/day)`);
 
 function fmtDate(d) {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" });
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +130,24 @@ async function findProspects() {
 
   // Apply city override if set by prospect-sender
   if (OVERRIDE_CITY) {
+    // Auto-detect country from city name so --city Melbourne doesn't use UK on Wednesdays
+    const cityLower = OVERRIDE_CITY.toLowerCase();
+    const auCities = (COUNTRY_CITIES["Australia"] || []).map(c => c.toLowerCase());
+    const nzCities = (COUNTRY_CITIES["New Zealand"] || []).map(c => c.toLowerCase());
+    const ukCities = (COUNTRY_CITIES["United Kingdom"] || []).map(c => c.toLowerCase());
+    if (auCities.includes(cityLower)) {
+      targeting.country = "Australia";
+      targeting.countries = ["Australia"];
+      targeting.targets[0].country = "Australia";
+    } else if (nzCities.includes(cityLower)) {
+      targeting.country = "New Zealand";
+      targeting.countries = ["New Zealand"];
+      targeting.targets[0].country = "New Zealand";
+    } else if (ukCities.includes(cityLower)) {
+      targeting.country = "United Kingdom";
+      targeting.countries = ["United Kingdom"];
+      targeting.targets[0].country = "United Kingdom";
+    }
     targeting.targets[0].city = OVERRIDE_CITY;
     targeting.targets[0].locations = [`${OVERRIDE_CITY}, ${targeting.country}`];
     targeting.primaryCity = OVERRIDE_CITY;
@@ -159,9 +177,8 @@ async function findProspects() {
   try {
     const sentRows = await readRows(SHEET_TAB);
 
-    // Calculate UTC date boundaries for "today" (covers AEST/UTC gap)
-    const utcToday = new Date().toISOString().slice(0, 10);
-    const utcYesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    // Calculate AEST date for "today" — no more double-counting yesterday
+    const aestToday = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" });
 
     for (const row of sentRows.slice(1)) {
       const email = (row[3] || "").trim().toLowerCase();
@@ -176,8 +193,10 @@ async function findProspects() {
       if (sentStatus === "Yes" && dateStr) {
         // Parse date robustly — handles "YYYY-MM-DD", "M/D/YYYY", and Date objects
         const rowDate = new Date(dateStr);
-        const rowDateStr = !isNaN(rowDate.getTime()) ? rowDate.toISOString().slice(0, 10) : "";
-        const isToday = rowDateStr === utcToday || rowDateStr === utcYesterday;
+        const rowDateStr = !isNaN(rowDate.getTime())
+          ? rowDate.toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" })
+          : "";
+        const isToday = rowDateStr === aestToday;
 
         if (isToday) {
           const sentVia = (row[11] || "").trim().toLowerCase();
