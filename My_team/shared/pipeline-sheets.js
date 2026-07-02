@@ -7,7 +7,7 @@ const oauth2Client = new google.auth.OAuth2(
   config.gmailRedirectUri
 );
 
-oauth2Client.setCredentials({ refresh_token: config.gmailRefreshToken });
+oauth2Client.setCredentials({ refresh_token: config.gmailRefreshToken3 || config.gmailRefreshToken });
 
 const sheets = google.sheets({ version: "v4", auth: oauth2Client });
 

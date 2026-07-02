@@ -4,3 +4,4 @@ node_modules/
 logs/
 data/
 .DS_Store
+data/email-queue.json
